@@ -32,6 +32,7 @@ import { computeProductRisk } from './productRiskEngine.js';
 import { generateWarrantyAdvisory } from './warrantyAdvisorEngine.js';
 import { analyzeInvoiceFraud } from './fraudDetectionEngine.js';
 import { evaluateWarrantyClaim } from '../rules-engine/warrantyEligibilityEngine.js';
+import { extractInvoiceText } from '../ocr/ocrEngine.js';
 
 /**
  * Wraps a stage function so a failure returns a structured error object
@@ -213,8 +214,6 @@ export async function processInvoiceText(rawOcrText, options = {}) {
  * @param {string}   [options.ocrLang='eng']
  */
 export async function processInvoiceFile(imageFile, options = {}) {
-  const { extractInvoiceText } = await import('../ocr/ocrEngine.js');
-
   const ocrResult = await extractInvoiceText(imageFile, {
     lang: options.ocrLang || 'eng',
     renderer: options.pdfRenderer,
