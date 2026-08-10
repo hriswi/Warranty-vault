@@ -26,7 +26,10 @@ service cloud.firestore {
     // ── Products collection ───────────────────────────────────────────────
     // Each product document has a userId field; only the owner may access it.
     match /products/{productId} {
-      allow read, update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow read, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
         // Basic schema sanity checks server-side

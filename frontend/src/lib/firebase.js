@@ -10,7 +10,6 @@ import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 
 const requiredFirebaseEnv = [
   'VITE_FIREBASE_API_KEY',
@@ -45,7 +44,6 @@ export const analyticsReady = firebaseConfig.measurementId
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 
 googleProvider.setCustomParameters({ prompt: 'select_account' });

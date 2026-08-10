@@ -51,7 +51,7 @@ export const useStore = create(
     }),
     {
       name: 'warranty-vault-store',
-      partialize: (s) => ({ theme: s.theme, dashboardView: s.dashboardView, agentMemory: s.agentMemory }),
+      partialize: (s) => ({ theme: s.theme, dashboardView: s.dashboardView }),
     }
   )
 );

@@ -120,6 +120,15 @@ export async function retrieveWarrantyPolicy(brand, productName = '', category =
     return { ...cached.data, fromCache: true };
   }
 
+  // Keep the same deterministic browser-first behavior as the frontend
+  // engine: no external service is required for assistant answers.
+  return {
+    brand,
+    retrieved: false,
+    reason: 'External policy retrieval is disabled in browser-first mode.',
+    fallback: getInternalPolicyFallback(brand),
+  };
+
   const target = RETRIEVAL_TARGETS[brandKey] || RETRIEVAL_TARGETS[brand.toLowerCase()];
   if (!target) {
     return {

@@ -137,18 +137,9 @@ function Message({ msg }) {
             lineHeight: 1.7,
           }}
         >
-          <div
-            className="prose-sm"
-            style={{ whiteSpace: 'pre-wrap' }}
-            dangerouslySetInnerHTML={{
-              __html: (msg.rawAnswer || msg.content)
-                .replace(/\*\*(.*?)\*\*/g, '<strong style="color:rgba(255,255,255,0.85);font-weight:500">$1</strong>')
-                .replace(/^---$/gm, '<hr style="border-color:rgba(255,255,255,0.08);margin:12px 0"/>')
-                .replace(/^#{1,3}\s+(.+)$/gm, '<p style="color:rgba(255,255,255,0.5);font-size:10px;letter-spacing:0.1em;font-family:monospace;text-transform:uppercase;margin-bottom:8px">$1</p>')
-                .replace(/^• /gm, '&nbsp;&nbsp;· ')
-                .replace(/^(\d+)\. /gm, '&nbsp;&nbsp;$1. '),
-            }}
-          />
+          <div className="prose-sm" style={{ whiteSpace: 'pre-wrap' }}>
+            {msg.rawAnswer || msg.content}
+          </div>
         </div>
 
         {/* Follow-up suggestions */}
@@ -208,9 +199,9 @@ export default function AgentPage() {
       try {
         const { WarrantyAgent } = await import('../../lib/warrantyEngine.js');
 
-        const a = agentMemory
-          ? WarrantyAgent.fromSerialized(JSON.parse(agentMemory))
-          : new WarrantyAgent();
+        // Firestore-backed products are the source of truth. Do not restore a
+        // graph serialized by another signed-in user.
+        const a = new WarrantyAgent();
 
         // Load all current products into the agent graph
         for (const product of products) {
@@ -262,7 +253,7 @@ export default function AgentPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [products]);
 
   // Scroll to bottom on new messages
   useEffect(() => {

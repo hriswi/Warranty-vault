@@ -10,10 +10,10 @@ import { useStore } from '../store/store.js';
 
 export function useProductSync() {
   const { user } = useAuth();
-  const { setProducts } = useStore();
+  const { setProducts, setAgentMemory } = useStore();
 
   useEffect(() => {
-    if (!user) { setProducts([]); return; }
+    if (!user) { setProducts([]); setAgentMemory(null); return; }
 
     const q = query(
       collection(db, 'products'),

@@ -11,9 +11,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useStore } from '../../store/store.js';
-import { db, storage } from '../../lib/firebase.js';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db } from '../../lib/firebase.js';
+import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { saveInvoice, deleteInvoice } from '../../lib/localFileStore.js';
 import {
   validateFile, validateFileSync, dropzoneValidator,
   MAX_FILE_SIZE_LABEL, ALLOWED_FORMATS_LABEL, DROPZONE_ACCEPT,
@@ -226,18 +226,19 @@ export default function UploadPage() {
     if (!form.productName) { setError('Product name is required.'); return; }
     setError(''); setSaving(true);
 
+    let productRef = null;
+    let savedLocalInvoice = false;
     try {
-      let invoiceUrl = null;
-
+      if (!user) throw new Error('Sign in before saving a product.');
       if (file) {
-        // Layer 4: pre-Firebase upload validation
         const guard = await validateFile(file);
-        if (!guard.valid) { setError(guard.error); setSaving(false); return; }
+        if (!guard.valid) { setError(guard.error); return; }
+      }
 
-        const path = `users/${user.uid}/invoices/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-        const ref  = storageRef(storage, path);
-        await uploadBytes(ref, file);
-        invoiceUrl = await getDownloadURL(ref);
+      productRef = doc(collection(db, 'products'));
+      if (file) {
+        await saveInvoice({ userId: user.uid, productId: productRef.id, file });
+        savedLocalInvoice = true;
       }
 
       const productData = {
@@ -252,7 +253,10 @@ export default function UploadPage() {
         seller:            form.seller.trim(),
         price:             form.price.trim(),
         notes:             form.notes.trim(),
-        invoiceUrl,
+        invoiceStoredLocally: Boolean(file),
+        invoiceFilename: file?.name || null,
+        invoiceMimeType: file?.type || null,
+        invoiceSize: file?.size || null,
         overallConfidence: overallConf,
         fieldConfidence:   fieldConf,
         fraudWarning:      pipelineResult?.fraud?.warningLevel ?? fraudWarning,
@@ -267,13 +271,14 @@ export default function UploadPage() {
         updatedAt:         serverTimestamp(),
       };
 
-      const docRef = await addDoc(collection(db, 'products'), productData);
-      addProduct({ id: docRef.id, ...productData, createdAt: new Date().toISOString() });
+      await setDoc(productRef, productData);
+      addProduct({ id: productRef.id, ...productData, createdAt: new Date().toISOString() });
       addNotification({ type: 'success', message: `${form.productName} added.` });
       setSaved(true);
-      setTimeout(() => navigate(`/dashboard/products/${docRef.id}`), 1200);
+      setTimeout(() => navigate(`/dashboard/products/${productRef.id}`), 1200);
     } catch (err) {
-      setError('Failed to save. Check your connection and try again.');
+      if (savedLocalInvoice && productRef && user) await deleteInvoice(user.uid, productRef.id).catch(() => {});
+      setError(err?.message || 'Failed to save. Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -359,7 +364,7 @@ export default function UploadPage() {
             <ShieldCheck size={13} className="text-white/25 shrink-0 mt-0.5" />
             <p className="text-white/25 text-[11px] leading-relaxed">
               Files are validated for size, type, and content signature before processing.
-              Max {MAX_FILE_SIZE_LABEL} · {ALLOWED_FORMATS_LABEL} only.
+              Original invoice files stay on this browser only; they are not stored in the cloud. Max {MAX_FILE_SIZE_LABEL}.
             </p>
           </div>
 

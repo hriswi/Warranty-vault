@@ -13,6 +13,8 @@ import { useStore } from '../../store/store.js';
 import { differenceInDays } from 'date-fns';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase.js';
+import { useAuth } from '../../hooks/useAuth.jsx';
+import { deleteInvoice, getInvoice } from '../../lib/localFileStore.js';
 
 function getWarrantyStatus(product) {
   if (!product.purchaseDate || !product.warrantyMonths) return { status: 'unknown', days: null, expiry: null, pct: 0 };
@@ -131,12 +133,28 @@ export default function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { products, deleteProduct, addNotification } = useStore();
+  const { user } = useAuth();
   const [deleting, setDeleting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [invoiceUrl, setInvoiceUrl] = useState(null);
+  const [invoiceAvailable, setInvoiceAvailable] = useState(false);
 
   const product = products.find((p) => p.id === id);
 
   useEffect(() => { window.scrollTo(0, 0); }, [id]);
+
+  useEffect(() => {
+    let objectUrl = null;
+    let active = true;
+    if (!user || !id) return undefined;
+    getInvoice(user.uid, id).then((invoice) => {
+      if (!active || !invoice?.file) return;
+      objectUrl = URL.createObjectURL(invoice.file);
+      setInvoiceUrl(objectUrl);
+      setInvoiceAvailable(true);
+    }).catch(() => { if (active) setInvoiceAvailable(false); });
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [user?.uid, id]);
 
   if (!product) {
     return (
@@ -153,6 +171,7 @@ export default function ProductDetailPage() {
     setDeleting(true);
     try {
       await deleteDoc(doc(db, 'products', product.id));
+      if (user) await deleteInvoice(user.uid, product.id).catch(() => {});
       deleteProduct(product.id);
       addNotification({ type: 'info', message: `${product.productName} removed.` });
       navigate('/dashboard/products', { replace: true });
@@ -314,17 +333,17 @@ export default function ProductDetailPage() {
           </div>
 
           {/* Invoice */}
-          {product.invoiceUrl && (
+          {(invoiceAvailable || product.invoiceStoredLocally) && (
             <div className="data-card">
               <h2 className="font-equinox text-white/70 text-xs tracking-[0.12em] mb-4">INVOICE DOCUMENT</h2>
-              <div className="flex gap-3">
-                <a href={product.invoiceUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost text-xs py-2 px-4">
+              {invoiceUrl ? <div className="flex gap-3">
+                <a href={invoiceUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost text-xs py-2 px-4">
                   <ExternalLink size={13} /> View invoice
                 </a>
-                <a href={product.invoiceUrl} download className="btn-ghost text-xs py-2 px-4">
+                <a href={invoiceUrl} download={product.invoiceFilename || 'invoice'} className="btn-ghost text-xs py-2 px-4">
                   <Download size={13} /> Download
                 </a>
-              </div>
+              </div> : <p className="text-white/25 text-sm">This invoice is stored only on the browser where it was uploaded.</p>}
             </div>
           )}
         </div>

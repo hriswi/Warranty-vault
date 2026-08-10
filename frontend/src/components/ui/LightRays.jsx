@@ -1,170 +1,79 @@
+import { useEffect, useRef } from 'react';
+
 /**
- * LightRays.jsx
- *
- * OGL WebGL light ray background — interactive, mouse-tracking,
- * visually prominent. Used as the hero section background per spec.
- *
- * Renders animated volumetric light rays using OGL's WebGL layer.
- * Mouse position drives the ray focal point for interactivity.
+ * A deliberately small, defensive canvas background. It has no WebGL/OGL
+ * dependency: failure to acquire a drawing context simply leaves the hero
+ * with its normal CSS background.
  */
-import React, { useEffect, useRef } from 'react';
-import { Renderer, Program, Mesh, Triangle } from 'ogl';
-
-const VERTEX_SHADER = /* glsl */`
-  attribute vec2 position;
-  attribute vec2 uv;
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = vec4(position, 0, 1);
-  }
-`;
-
-const FRAGMENT_SHADER = /* glsl */`
-  precision highp float;
-
-  uniform float uTime;
-  uniform vec2  uResolution;
-  uniform vec2  uMouse;
-  uniform float uIntensity;
-
-  varying vec2 vUv;
-
-  #define PI 3.14159265
-  #define NUM_RAYS 12
-
-  float hash(float n) { return fract(sin(n) * 43758.5453123); }
-
-  float ray(vec2 uv, vec2 origin, float angle, float width, float falloff) {
-    vec2 dir = vec2(cos(angle), sin(angle));
-    vec2 perp = vec2(-dir.y, dir.x);
-    vec2 delta = uv - origin;
-    float along = dot(delta, dir);
-    float across = dot(delta, perp);
-    float mask = smoothstep(width, 0.0, abs(across));
-    float depth = smoothstep(-0.1, falloff, along);
-    return mask * depth;
-  }
-
-  void main() {
-    vec2 uv = (gl_FragCoord.xy / uResolution) * 2.0 - 1.0;
-    uv.x *= uResolution.x / uResolution.y;
-
-    // Mouse-driven focal point
-    vec2 mouse = uMouse * vec2(uResolution.x / uResolution.y, 1.0);
-    vec2 origin = mouse * 0.5;
-
-    float brightness = 0.0;
-    float t = uTime * 0.18;
-
-    for (int i = 0; i < NUM_RAYS; i++) {
-      float fi = float(i);
-      float baseAngle = fi * (PI * 2.0 / float(NUM_RAYS));
-      float wobble = sin(t * (0.6 + hash(fi) * 0.8) + fi * 1.7) * 0.18;
-      float angle = baseAngle + wobble;
-      float width = 0.012 + hash(fi * 3.1) * 0.018;
-      float intensity = 0.4 + hash(fi * 7.3) * 0.6;
-      float falloff = 0.5 + hash(fi * 2.7) * 1.0;
-      brightness += ray(uv, origin, angle, width, falloff) * intensity;
-    }
-
-    // Add a subtle inner glow at the focal point
-    float glow = 1.0 - smoothstep(0.0, 0.25, length(uv - origin));
-    brightness += glow * 0.08;
-
-    brightness *= uIntensity;
-
-    // Monochrome: pure white rays
-    vec3 color = vec3(brightness);
-    float alpha = brightness * 0.65;
-
-    gl_FragColor = vec4(color, alpha);
-  }
-`;
-
-export default function LightRays({
-  intensity = 0.85,
-  className = '',
-  style = {},
-}) {
+export default function LightRays({ className = '', intensity = 0.7, style = {} }) {
   const canvasRef = useRef(null);
-  const stateRef  = useRef({ mouse: [0, 0], animId: null });
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
 
-    const renderer = new Renderer({ canvas, alpha: true, antialias: false });
-    const gl = renderer.gl;
-    gl.clearColor(0, 0, 0, 0);
+    const context = canvas.getContext('2d', { alpha: true });
+    if (!context) return undefined;
 
-    const geometry = new Triangle(gl);
-
-    const program = new Program(gl, {
-      vertex: VERTEX_SHADER,
-      fragment: FRAGMENT_SHADER,
-      uniforms: {
-        uTime:       { value: 0 },
-        uResolution: { value: [canvas.clientWidth, canvas.clientHeight] },
-        uMouse:      { value: [0, 0] },
-        uIntensity:  { value: intensity },
-      },
-      transparent: true,
-      depthTest: false,
-    });
-
-    const mesh = new Mesh(gl, { geometry, program });
+    let frameId = null;
+    let mounted = true;
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+    let lastTime = 0;
+    let phase = 0;
 
     const resize = () => {
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      renderer.setSize(w, h);
-      program.uniforms.uResolution.value = [w, h];
-    };
-
-    const ro = new ResizeObserver(resize);
-    ro.observe(canvas.parentElement || document.body);
-    resize();
-
-    const onMouseMove = (e) => {
       const rect = canvas.getBoundingClientRect();
-      stateRef.current.mouse = [
-        ((e.clientX - rect.left) / rect.width)  * 2 - 1,
-        -(((e.clientY - rect.top)  / rect.height) * 2 - 1),
-      ];
+      width = Math.max(1, Math.floor(rect.width));
+      height = Math.max(1, Math.floor(rect.height));
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
-    window.addEventListener('mousemove', onMouseMove, { passive: true });
 
-    let start = performance.now();
-    const animate = (now) => {
-      stateRef.current.animId = requestAnimationFrame(animate);
-      const elapsed = (now - start) / 1000;
-      program.uniforms.uTime.value  = elapsed;
-      program.uniforms.uMouse.value = stateRef.current.mouse;
-      renderer.render({ scene: mesh });
+    const draw = (time) => {
+      if (!mounted) return;
+      const delta = Math.min(48, time - lastTime || 16);
+      lastTime = time;
+      phase += delta * 0.00012;
+      context.clearRect(0, 0, width, height);
+
+      const focalX = width * (0.64 + Math.sin(phase) * 0.035);
+      const focalY = height * (0.36 + Math.cos(phase * 0.7) * 0.03);
+      const rays = [
+        [-0.24, 0.10, 0.025], [-0.08, 0.24, 0.032], [0.11, 0.48, 0.022],
+        [0.35, 0.78, 0.017], [0.52, 0.97, 0.012],
+      ];
+      rays.forEach(([start, end, alpha], index) => {
+        const drift = Math.sin(phase * (1.1 + index * 0.07) + index) * 0.045;
+        const gradient = context.createLinearGradient(focalX, focalY, width * (start + 0.5 + drift), height);
+        gradient.addColorStop(0, `rgba(255,255,255,${alpha * intensity})`);
+        gradient.addColorStop(1, 'rgba(255,255,255,0)');
+        context.fillStyle = gradient;
+        context.beginPath();
+        context.moveTo(focalX, focalY);
+        context.lineTo(width * (start + drift), height);
+        context.lineTo(width * (end + drift), height);
+        context.closePath();
+        context.fill();
+      });
+      frameId = window.requestAnimationFrame(draw);
     };
-    stateRef.current.animId = requestAnimationFrame(animate);
+
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+    resize();
+    frameId = window.requestAnimationFrame(draw);
 
     return () => {
-      cancelAnimationFrame(stateRef.current.animId);
-      window.removeEventListener('mousemove', onMouseMove);
-      ro.disconnect();
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      mounted = false;
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+      context.clearRect(0, 0, width, height);
     };
   }, [intensity]);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      className={className}
-      style={{
-        position: 'absolute',
-        inset: 0,
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-        ...style,
-      }}
-    />
-  );
+  return <canvas ref={canvasRef} aria-hidden="true" className={className} style={style} />;
 }
