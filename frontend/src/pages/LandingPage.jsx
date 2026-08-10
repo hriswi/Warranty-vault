@@ -31,20 +31,6 @@ function useReveal() {
   return ref;
 }
 
-function Cursor() {
-  const dot = useRef(null); const ring = useRef(null);
-  useEffect(() => {
-    if (!window.matchMedia('(pointer: fine)').matches) return undefined;
-    let x = -100, y = -100, rx = -100, ry = -100, frame;
-    const move = (event) => { x = event.clientX; y = event.clientY; };
-    const over = (event) => document.body.classList.toggle('cursor-active', Boolean(event.target.closest('a, button, [data-cursor]')));
-    const animate = () => { rx += (x - rx) * 0.16; ry += (y - ry) * 0.16; if (dot.current) dot.current.style.transform = `translate3d(${x}px,${y}px,0)`; if (ring.current) ring.current.style.transform = `translate3d(${rx}px,${ry}px,0)`; frame = requestAnimationFrame(animate); };
-    window.addEventListener('pointermove', move, { passive: true }); window.addEventListener('pointerover', over, { passive: true }); frame = requestAnimationFrame(animate);
-    return () => { cancelAnimationFrame(frame); window.removeEventListener('pointermove', move); window.removeEventListener('pointerover', over); document.body.classList.remove('cursor-active'); };
-  }, []);
-  return <><span ref={dot} className="site-cursor-dot" /><span ref={ring} className="site-cursor-ring" /></>;
-}
-
 function Nav() {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => { const update = () => setScrolled(window.scrollY > 16); update(); window.addEventListener('scroll', update, { passive: true }); return () => window.removeEventListener('scroll', update); }, []);
@@ -74,4 +60,4 @@ function CTA() { const ref = useReveal(); return <section className="final-cta">
 
 function Footer() { return <footer className="landing-footer"><div className="landing-shell"><span className="brand">WARRANTY VAULT</span><span>Autonomous warranty intelligence</span><span>© {new Date().getFullYear()}</span></div></footer>; }
 
-export default function LandingPage() { return <main className="landing-page"><Cursor/><Nav/><Hero/><Intro/><Pipeline/><Features/><Reasoning/><Analytics/><HowItWorks/><Security/><CTA/><Footer/></main>; }
+export default function LandingPage() { return <main className="landing-page"><Nav/><Hero/><Intro/><Pipeline/><Features/><Reasoning/><Analytics/><HowItWorks/><Security/><CTA/><Footer/></main>; }
