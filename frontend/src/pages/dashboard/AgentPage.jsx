@@ -22,6 +22,7 @@ const SUGGESTED_PROMPTS = [
   { icon: Clock,        text: 'Which of my products expire soon?' },
   { icon: TrendingUp,   text: 'Show me my highest risk device' },
   { icon: AlertTriangle,text: 'Are any invoices suspicious?' },
+  { icon: Brain,        text: 'Look up the specs for my laptop' },
   { icon: Brain,        text: 'What happens if my keyboard stops working?' },
   { icon: Zap,          text: 'How long until my TV warranty expires?' },
 ];
@@ -209,9 +210,9 @@ export default function AgentPage() {
 
   const welcomeMessage = user
     ? products.length > 0
-      ? `I'm your Warranty Vault assistant. I can see ${products.length} product${products.length === 1 ? '' : 's'} in your account with their warranty, risk, and invoice-integrity details.\n\nWhat would you like to check?`
-      : "I'm your Warranty Vault assistant. I can help with your products, warranty coverage, risk, suspicious invoices, expiry dates, and troubleshooting.\n\nYou don't have any products tracked yet — add one from the Add Product page, then ask me anything."
-    : "I'm your Warranty Vault assistant. Sign in to chat about your warranty records.";
+      ? `Yo — I can see ${products.length} product${products.length === 1 ? '' : 's'} with warranty, risk, and invoice-integrity details. I can also look up current specs, recalls, and device info when you ask.\n\nWhat are we checking?`
+      : "Yo — I can help with warranty coverage, risk, suspicious invoices, expiry dates, troubleshooting, and live device details.\n\nAdd a product first, then hit me with a question."
+    : "Sign in first, then we can check your warranty records and device details.";
 
   // Health probe — the status pill tells the user Qwen/backend state honestly.
   useEffect(() => {

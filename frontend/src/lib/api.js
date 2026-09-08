@@ -11,7 +11,14 @@
  * Worker URL to use hosted AI on lower-spec devices.
  */
 
+import { auth } from './firebase.js';
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
+
+async function apiHeaders(extra = {}) {
+  const token = await auth.currentUser?.getIdToken();
+  return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+}
 
 export class ApiError extends Error {
   constructor(code, message, extra = {}) {
@@ -65,7 +72,7 @@ export async function* streamChat({ messages, products, signal }) {
   try {
     res = await fetch(`${API_BASE}/api/ai/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      headers: await apiHeaders({ 'Content-Type': 'application/json', Accept: 'text/event-stream' }),
       body: JSON.stringify({
         messages: Array.isArray(messages) ? messages : [],
         products: Array.isArray(products) ? products : [],
@@ -146,7 +153,7 @@ export async function extractInvoiceWithQwen(text, { signal } = {}) {
   try {
     res = await fetch(`${API_BASE}/api/ai/extract-invoice`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await apiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ text: String(text ?? '').slice(0, 200000) }),
       signal,
     });
@@ -186,7 +193,7 @@ export async function productResearch({ productName, brand }, { signal } = {}) {
   try {
     res = await fetch(`${API_BASE}/api/ai/product-research`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await apiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ productName: String(productName ?? ''), brand: String(brand ?? '') }),
       signal,
     });
