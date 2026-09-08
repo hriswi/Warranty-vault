@@ -1,5 +1,5 @@
 /**
- * api.js — Frontend client for the local Warranty Vault backend.
+ * api.js — Frontend client for either the local Qwen bridge or hosted AI.
  *
  * The browser NEVER talks to Qwen directly. Everything goes through
  * the Node backend on the user's machine (port 3000 by default):
@@ -7,6 +7,8 @@
  *   React app → POST /api/ai/chat → backend → Qwen (127.0.0.1:8080)
  *
  * Base URL is configurable via VITE_API_BASE_URL (see frontend/.env).
+ * Keep http://localhost:3000 for local Qwen; point it to the Cloudflare
+ * Worker URL to use hosted AI on lower-spec devices.
  */
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
@@ -33,11 +35,13 @@ export async function checkBackendHealth(signal) {
     if (!res.ok) return { state: 'backend-offline', ok: false, backendReachable: false, qwen: { reachable: false } };
     const body = await res.json().catch(() => ({}));
     const qwen = body.qwen || { reachable: false };
+    const hostedReady = body.state === 'AI_READY' && body.provider === 'cloudflare-workers-ai';
     return {
-      state: qwen.reachable ? 'ready' : 'ai-offline',
+      state: (qwen.reachable || hostedReady) ? 'ready' : 'ai-offline',
       ok: true,
       backendReachable: true,
       qwen,
+      provider: body.provider || 'local-qwen',
     };
   } catch (_) {
     return { state: 'backend-offline', ok: false, backendReachable: false, qwen: { reachable: false } };
