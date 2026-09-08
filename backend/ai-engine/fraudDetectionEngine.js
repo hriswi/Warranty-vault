@@ -27,6 +27,9 @@
  *      or platform (Amazon/Flipkart invoice format does not match)
  *   6. FIELD FORMAT ANOMALIES — invoice numbers / serial numbers with
  *      unusual character-length patterns
+ *   7. SYNTHETIC / TEST DOCUMENTS — raw OCR text or field values that
+ *      self-identify as synthetic, dummy, test, demo, sample or fictional
+ *      files (extraction quality is NOT proof of authenticity)
  *
  * Output:
  *   fraudScore: 0–100 (higher = more suspicious)
@@ -43,11 +46,25 @@ const WARNING_LEVELS = Object.freeze([
   { min: 80, level: 'FRAUDULENT',  action: 'reject',   label: 'Strong indicators of document manipulation. Do not process this warranty claim without thorough human verification.' },
   { min: 55, level: 'HIGH_RISK',   action: 'escalate', label: 'Multiple suspicious signals detected. Escalate for manual review before processing.' },
   { min: 30, level: 'SUSPICIOUS',  action: 'verify',   label: 'Some inconsistencies detected. Verify key fields with the user before proceeding.' },
-  { min: 0,  level: 'CLEAN',       action: 'proceed',  label: 'No significant fraud signals detected. Invoice appears legitimate.' },
+  { min: 0,  level: 'CLEAN',       action: 'proceed',  label: 'No significant fraud signals detected — the document is internally consistent (authenticity is not independently verified).' },
 ]);
 
-function getWarningLevel(score) {
-  return WARNING_LEVELS.find((w) => score >= w.min) || WARNING_LEVELS[WARNING_LEVELS.length - 1];
+// Synthetic/test-document markers mean the document may not be a genuine
+// purchase invoice — that is STRONG SUSPICION, never confirmed fraud.
+// FRAUDULENT is reserved for explicit fraud confirmation (a future
+// verification mechanism emitting a FRAUD_CONFIRMED signal may use it).
+const CONFIRMED_FRAUD_TYPE = 'FRAUD_CONFIRMED';
+const SYNTHETIC_MARKER_TYPES = new Set(['SYNTHETIC_DOCUMENT']);
+
+function getWarningLevel(score, signals = []) {
+  if (score >= 80) {
+    if (signals.some((s) => s.type === CONFIRMED_FRAUD_TYPE)) return WARNING_LEVELS[0];
+    if (signals.some((s) => SYNTHETIC_MARKER_TYPES.has(s.type))) return WARNING_LEVELS[2];
+    return WARNING_LEVELS[1];
+  }
+  if (score >= 55) return WARNING_LEVELS[1];
+  if (score >= 30) return WARNING_LEVELS[2];
+  return WARNING_LEVELS[3];
 }
 
 // Known seller/platform patterns. Each brand's invoices from legitimate
@@ -136,17 +153,69 @@ function checkOcrAnomalyPatterns(parsedInvoice, rawText) {
     });
   }
 
-  // Check: purchase date inferred without a clear label on a high-confidence invoice
-  // (high-confidence invoices from major platforms always have explicit date labels).
-  if (
-    parsedInvoice.purchaseDate &&
-    parsedInvoice.fieldSources?.purchaseDate === 'document-wide date scan (no explicit purchase-date label found)' &&
-    parsedInvoice.overallConfidence >= 0.70 // only suspicious on otherwise well-parsed invoices
-  ) {
+  // NOTE: extraction quality concerns (missing labels, low OCR confidence,
+  // missing fields) are NOT fraud signals — they lower data confidence and
+  // are reported as incomplete data elsewhere. Only document CONTENT markers
+  // belong in the integrity analysis.
+  return signals;
+}
+
+/**
+ * Detects documents that explicitly self-identify as synthetic, dummy,
+ * test, demo or sample files — e.g. "SYNTHETIC TEST DOCUMENT — NOT A REAL
+ * INVOICE OR PROOF OF PURCHASE". A clean OCR/extraction does NOT prove
+ * authenticity; an explicit test/sample marker means the document must
+ * not be treated as genuine proof of purchase.
+ *
+ * Detection is generic phrase/word matching on the raw OCR text plus
+ * placeholder-looking field values (invoice/serial numbers containing
+ * "test", "dummy", "sample", "demo", etc.). No document-specific
+ * hardcoding.
+ */
+const SYNTHETIC_PHRASE_PATTERNS = Object.freeze([
+  /\bsynthetic\b/,
+  /\bfictional\b/,
+  /\bdummy\b/,
+  /\bmock\b/,
+  /\bplaceholder\b/,
+  /\btest (document|invoice|receipt|sample|copy)\b/,
+  /\b(demo|sample|example) (invoice|document|receipt)\b/,
+  /\bgenerated (for|by) (testing|demo|demonstration|test)\b/,
+  /\bfor (testing|test|demo|demonstration|evaluation) purposes\b/,
+  /\bnot a (real|genuine) (invoice|document|receipt|proof of purchase)\b/,
+  /\bdo not (use|submit) (as |for )?(proof|evidence|claim)\b/,
+]);
+
+const SYNTHETIC_FIELD_PATTERN = /\b(test|dummy|sample|mock|demo|synthetic|fictional|placeholder)[\s_-]*\d*$/i;
+
+function checkSyntheticDocumentMarkers(parsedInvoice, rawText) {
+  const signals = [];
+  let matched = null;
+
+  const haystack = (rawText || '').toLowerCase();
+  for (const pattern of SYNTHETIC_PHRASE_PATTERNS) {
+    const match = haystack.match(pattern);
+    if (match) {
+      matched = match[0].length <= 48 ? match[0] : `${match[0].slice(0, 45)}...`;
+      break;
+    }
+  }
+
+  if (!matched) {
+    for (const field of ['invoiceNumber', 'serialNumber']) {
+      const value = parsedInvoice?.[field];
+      if (value && SYNTHETIC_FIELD_PATTERN.test(String(value).trim())) {
+        matched = `${field}="${value}"`;
+        break;
+      }
+    }
+  }
+
+  if (matched) {
     signals.push({
-      type: 'MISSING_DATE_LABEL',
-      severity: 0.2,
-      detail: 'Purchase date was inferred from document-wide scan on an otherwise well-structured invoice. Legitimate high-quality invoices typically have clearly labelled date fields.',
+      type: 'SYNTHETIC_DOCUMENT',
+      severity: 0.85,
+      detail: `Document contains a synthetic/test-document marker ("${matched}") — it appears to be a sample, dummy or test file rather than a genuine purchase invoice. Do not treat it as proof of purchase; verify the original document before processing.`,
     });
   }
 
@@ -345,6 +414,9 @@ export function analyzeInvoiceFraud(parsedInvoice, rawOcrText = '', options = {}
   const ocrSignals = checkOcrAnomalyPatterns(parsedInvoice, rawOcrText);
   signals.push(...ocrSignals);
 
+  const syntheticSignals = checkSyntheticDocumentMarkers(parsedInvoice, rawOcrText);
+  signals.push(...syntheticSignals);
+
   // Duplicate check (optional, requires caller to pass registry).
   if (options.seenInvoiceNumbers && parsedInvoice.invoiceNumber) {
     const dupSignal = checkForDuplicate(
@@ -368,7 +440,7 @@ export function analyzeInvoiceFraud(parsedInvoice, rawOcrText = '', options = {}
   }
   fraudScore = Math.round(Math.min(100, fraudScore));
 
-  const { level: warningLevel, action, label: warningLabel } = getWarningLevel(fraudScore);
+  const { level: warningLevel, action, label: warningLabel } = getWarningLevel(fraudScore, signals);
 
   return {
     fraudScore,
@@ -384,7 +456,7 @@ export function analyzeInvoiceFraud(parsedInvoice, rawOcrText = '', options = {}
     })),
     summary:
       signals.length === 0
-        ? 'No fraud signals detected. Invoice appears structurally consistent.'
+        ? 'No fraud signals detected — the invoice is internally consistent. Consistency is not proof of authenticity.'
         : `${signals.length} suspicious signal(s) detected. Highest severity: ${sortedSignals[0]?.type || 'unknown'}.`,
     analyzedAt: new Date().toISOString(),
   };

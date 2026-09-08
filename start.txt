@@ -1,0 +1,9 @@
+netstat -ano | findstr :3000
+taskkill /PID <pid> /F
+
+cd C:\Autonomous-Warranty-Intelligence-System\backend
+npm start
+
+
+cd C:\Autonomous-Warranty-Intelligence-System\frontend
+npm run dev

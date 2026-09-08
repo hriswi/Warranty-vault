@@ -10,27 +10,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useStore } from '../../store/store.js';
-import { formatDistanceToNow, differenceInDays } from 'date-fns';
+import { getWarrantyTimeline } from '../../lib/warrantyStatus.js';
+import { riskColorFor, riskLevelFor } from '../../lib/engine/ai-engine/riskClassification.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function getRiskColor(score) {
-  if (!score && score !== 0) return 'rgba(255,255,255,0.2)';
-  if (score >= 80) return 'rgba(255,255,255,0.85)';
-  if (score >= 65) return 'rgba(255,255,255,0.6)';
-  if (score >= 45) return 'rgba(255,255,255,0.4)';
-  return 'rgba(255,255,255,0.2)';
-}
-
-function getWarrantyStatus(product) {
-  if (!product.purchaseDate || !product.warrantyMonths) return { status: 'unknown', days: null };
-  const purchase = new Date(product.purchaseDate);
-  const expiry = new Date(purchase);
-  expiry.setMonth(expiry.getMonth() + product.warrantyMonths);
-  const days = differenceInDays(expiry, new Date());
-  if (days < 0) return { status: 'expired', days: Math.abs(days), expiry };
-  if (days <= 30) return { status: 'expiring', days, expiry };
-  return { status: 'active', days, expiry };
-}
 
 // ── Stat card ──────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, sub, accent }) {
@@ -61,7 +44,7 @@ function StatCard({ icon: Icon, label, value, sub, accent }) {
 
 // ── Product row ────────────────────────────────────────────────────────────
 function ProductRow({ product }) {
-  const ws = getWarrantyStatus(product);
+  const ws = getWarrantyTimeline(product);
   const statusColors = {
     active:   'rgba(255,255,255,0.45)',
     expiring: 'rgba(255,255,255,0.75)',
@@ -112,7 +95,7 @@ function ProductRow({ product }) {
       {product.riskScore != null && (
         <div
           className="text-xs font-mono w-8 text-right shrink-0"
-          style={{ color: getRiskColor(product.riskScore) }}
+          style={{ color: riskColorFor(product.riskScore) }}
         >
           {product.riskScore}
         </div>
@@ -138,10 +121,10 @@ export default function DashboardPage() {
   }, []);
 
   // Computed stats
-  const activeProducts  = products.filter((p) => getWarrantyStatus(p).status === 'active');
-  const expiringProducts= products.filter((p) => getWarrantyStatus(p).status === 'expiring');
-  const expiredProducts = products.filter((p) => getWarrantyStatus(p).status === 'expired');
-  const highRisk        = products.filter((p) => (p.riskScore || 0) >= 65);
+  const activeProducts  = products.filter((p) => getWarrantyTimeline(p).status === 'active');
+  const expiringProducts= products.filter((p) => getWarrantyTimeline(p).status === 'expiring');
+  const expiredProducts = products.filter((p) => getWarrantyTimeline(p).status === 'expired');
+  const highRisk        = products.filter((p) => ['HIGH', 'CRITICAL'].includes(riskLevelFor(p.riskScore)));
   const fraudAlerts     = products.filter((p) => p.fraudWarning && p.fraudWarning !== 'CLEAN');
 
   const recentProducts = [...products]
@@ -201,7 +184,7 @@ export default function DashboardPage() {
           {(expiringProducts.length > 0 || fraudAlerts.length > 0) && (
             <div className="section-card mb-8 flex flex-col gap-2">
               {expiringProducts.slice(0, 2).map((p) => {
-                const ws = getWarrantyStatus(p);
+                const ws = getWarrantyTimeline(p);
                 return (
                   <div
                     key={p.id}

@@ -10,7 +10,7 @@
  *
  * Monitored conditions:
  *   1. WARRANTY EXPIRY PROXIMITY  — products expiring in 1/7/14/30/90 days
- *   2. HIGH RISK PRODUCTS         — products with risk score >= 70
+ *   2. HIGH RISK PRODUCTS         — products classified HIGH or CRITICAL by the canonical risk classification
  *   3. SUSPICIOUS INVOICES        — fraud score >= 55
  *   4. REPEATED REPORTED ISSUES   — same issue type reported 2+ times
  *   5. ANOMALOUS REPAIR FREQUENCY — more repairs than expected for category age

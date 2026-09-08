@@ -1,7 +1,7 @@
 /**
  * ProductDetailPage.jsx
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, Package, Shield, AlertTriangle, TrendingUp, Clock,
@@ -10,25 +10,14 @@ import {
   ExternalLink, Download, MessageSquare,
 } from 'lucide-react';
 import { useStore } from '../../store/store.js';
-import { differenceInDays } from 'date-fns';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase.js';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { deleteInvoice, getInvoice } from '../../lib/localFileStore.js';
-
-function getWarrantyStatus(product) {
-  if (!product.purchaseDate || !product.warrantyMonths) return { status: 'unknown', days: null, expiry: null, pct: 0 };
-  const purchase = new Date(product.purchaseDate);
-  const expiry = new Date(purchase);
-  expiry.setMonth(expiry.getMonth() + product.warrantyMonths);
-  const total = differenceInDays(expiry, purchase);
-  const used  = differenceInDays(new Date(), purchase);
-  const days  = differenceInDays(expiry, new Date());
-  const pct   = Math.max(0, Math.min(100, Math.round((used / total) * 100)));
-  if (days < 0) return { status: 'expired',  days: Math.abs(days), expiry, pct: 100 };
-  if (days <= 30) return { status: 'expiring', days, expiry, pct };
-  return { status: 'active', days, expiry, pct };
-}
+import { productResearch } from '../../lib/api.js';
+import { computeProductRisk } from '../../lib/engine/ai-engine/productRiskEngine.js';
+import { getWarrantyTimeline } from '../../lib/warrantyStatus.js';
+import { riskLevelLabelFor, riskColorFor } from '../../lib/engine/ai-engine/riskClassification.js';
 
 function InfoRow({ icon: Icon, label, value }) {
   if (!value) return null;
@@ -54,8 +43,8 @@ function RiskGauge({ score }) {
   const path = `M ${toXY(0).x} ${toXY(0).y} A ${r} ${r} 0 ${large} 1 ${end.x} ${end.y}`;
   const trackPath = `M ${toXY(0).x} ${toXY(0).y} A ${r} ${r} 0 1 1 ${toXY(180).x} ${toXY(180).y}`;
 
-  const levelLabel = score >= 80 ? 'CRITICAL' : score >= 65 ? 'HIGH' : score >= 45 ? 'MEDIUM' : score >= 25 ? 'LOW' : 'MINIMAL';
-  const levelColor = score >= 80 ? 'rgba(255,255,255,0.85)' : score >= 65 ? 'rgba(255,255,255,0.6)' : score >= 45 ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.25)';
+  const levelLabel = riskLevelLabelFor(score) || '—';
+  const levelColor = riskColorFor(score);
 
   return (
     <div className="flex flex-col items-center">
@@ -74,7 +63,7 @@ function WarrantyTimeline({ product, ws }) {
     <div className="flex flex-col gap-3">
       <div className="flex justify-between text-xs">
         <span className="text-white/30">{product.purchaseDate || '—'}</span>
-        <span className="text-white/30">{ws.expiry ? ws.expiry.toISOString().split('T')[0] : '—'}</span>
+        <span className="text-white/30">{ws.expiryIso || '—'}</span>
       </div>
       <div style={{ height: '2px', background: 'rgba(255,255,255,0.06)', borderRadius: '1px' }}>
         <div
@@ -104,16 +93,33 @@ function WarrantyTimeline({ product, ws }) {
   );
 }
 
-function FraudBadge({ level }) {
+function FraudBadge({ level, score }) {
+  // No fraud analysis was run — do NOT claim the invoice is verified.
+  if (!level && score == null) {
+    return (
+      <div className="flex items-center gap-2">
+        <HelpCircle size={14} className="text-white/30" />
+        <span className="text-white/40 text-xs">Integrity not assessed</span>
+      </div>
+    );
+  }
+  // Fraud analysis ran and found no signals. Extraction quality and
+  // internal consistency are NOT proof of authenticity — say so.
   if (!level || level === 'CLEAN') {
     return (
       <div className="flex items-center gap-2">
         <CheckCircle size={14} className="text-white/40" />
-        <span className="text-white/40 text-xs">Invoice verified — no fraud signals</span>
+        <span className="text-white/40 text-xs">Consistency check passed — no fraud signals</span>
       </div>
     );
   }
   const icons = { SUSPICIOUS: HelpCircle, HIGH_RISK: AlertTriangle, FRAUDULENT: XCircle };
+
+const RESEARCH_COLORS = {
+  recall:     'rgba(239,68,68,0.9)',
+  advisory:   'rgba(250,204,21,0.9)',
+  reliability: 'rgba(251,146,60,0.9)',
+};
   const Icon = icons[level] || AlertTriangle;
   return (
     <div
@@ -132,12 +138,17 @@ function FraudBadge({ level }) {
 export default function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { products, deleteProduct, addNotification } = useStore();
+  const { products, deleteProduct, updateProduct, addNotification } = useStore();
   const { user } = useAuth();
   const [deleting, setDeleting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [invoiceUrl, setInvoiceUrl] = useState(null);
   const [invoiceAvailable, setInvoiceAvailable] = useState(false);
+  const [researchEvidence, setResearchEvidence] = useState([]);
+  const [researchLoading, setResearchLoading] = useState(false);
+  const [researchError, setResearchError] = useState(null);
+  const [recomputing, setRecomputing] = useState(false);
+  const [recomputeError, setRecomputeError] = useState(null);
 
   const product = products.find((p) => p.id === id);
 
@@ -156,6 +167,80 @@ export default function ProductDetailPage() {
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [user?.uid, id]);
 
+  // Lazy internet research for recalls / advisories on this product.
+  const loadResearch = useCallback(async () => {
+    if (!product?.productName || researchLoading) return;
+    setResearchLoading(true);
+    setResearchError(null);
+    try {
+      const res = await productResearch({
+        productName: product.productName,
+        brand: product.brand || undefined,
+      });
+      setResearchEvidence(Array.isArray(res.evidence) ? res.evidence : []);
+    } catch (err) {
+      setResearchError(err.message || 'Research unavailable.');
+    } finally {
+      setResearchLoading(false);
+    }
+  }, [product?.productName, product?.brand, researchLoading]);
+
+  useEffect(() => {
+    const t = setTimeout(() => { loadResearch(); }, 800);
+    return () => clearTimeout(t);
+  }, [loadResearch]);
+
+  // Deterministic risk recompute from the CURRENT stored product data.
+  const handleRecomputeRisk = async () => {
+    if (!product) return;
+    setRecomputing(true);
+    setRecomputeError(null);
+    try {
+      const input = {
+        productName: product.productName,
+        brand: product.brand,
+        category: product.category,
+        purchaseDate: product.purchaseDate,
+        warrantyMonths: product.warrantyMonths || null,
+        overallConfidence: product.overallConfidence ?? null,
+        price: product.price ?? product.purchasePrice ?? null,
+        seller: product.seller ?? null,
+        invoiceNumber: product.invoiceNumber ?? null,
+        serialNumber: product.serialNumber ?? null,
+      };
+      const fraudReport = (product.fraudScore != null && product.fraudScore > 0)
+        ? { fraudScore: product.fraudScore, signals: product.fraudSignals || [], warningLevel: product.fraudWarning }
+        : null;
+      const r = computeProductRisk(input, new Date(), { fraudReport });
+      const patch = {
+        riskScore: r.riskScore,
+        riskLevel: r.riskLevel,
+        riskLevelLabel: r.riskLevelLabel,
+        riskReason: r.riskReason,
+        riskConfidence: r.riskConfidence,
+        riskFactors: r.riskFactors,
+        riskEvidence: r.riskEvidence,
+        riskWarnings: r.riskWarnings,
+        riskRecommendation: r.recommendation,
+        riskLastCalculatedAt: r.riskLastCalculatedAt,
+        risk: r,
+      };
+      await updateDoc(doc(db, 'products', product.id), patch);
+      updateProduct(product.id, patch);
+      addNotification({ type: 'info', message: 'Risk score recomputed from current data.' });
+    } catch (err) {
+      console.error(err);
+      setRecomputeError(err.message || 'Recompute failed.');
+    } finally {
+      setRecomputing(false);
+    }
+  };
+
+  const riskFactors = product?.riskFactors
+    ?? product?.risk?.riskFactors
+    ?? product?.risk?.factors
+    ?? [];
+
   if (!product) {
     return (
       <div className="p-8 flex flex-col items-center justify-center min-h-64">
@@ -165,7 +250,7 @@ export default function ProductDetailPage() {
     );
   }
 
-  const ws = getWarrantyStatus(product);
+  const ws = getWarrantyTimeline(product);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -294,7 +379,7 @@ export default function ProductDetailPage() {
           {/* Fraud status */}
           <div className="data-card">
             <h2 className="font-equinox text-white/70 text-xs tracking-[0.12em] mb-4">INVOICE INTEGRITY</h2>
-            <FraudBadge level={product.fraudWarning} />
+              <FraudBadge level={product.fraudWarning} score={product.fraudScore} />
             {product.overallConfidence != null && (
               <div className="mt-4 flex items-center gap-3">
                 <span className="text-white/25 text-xs">Extraction confidence</span>
@@ -355,9 +440,98 @@ export default function ProductDetailPage() {
             <div className="data-card flex flex-col items-center py-6">
               <p className="font-equinox text-white/40 text-[10px] tracking-[0.15em] mb-4">RISK SCORE</p>
               <RiskGauge score={product.riskScore} />
+              <p className="text-white/25 text-xs mt-3 font-mono">
+                {product.riskLevelLabel ?? product.riskLevel ?? '—'}
+              </p>
+              {product.riskReason && (
+                <p className="text-white/20 text-[11px] mt-1 leading-relaxed max-w-[230px]">
+                  {product.riskReason}
+                </p>
+              )}
+              {product.riskConfidence != null && (
+                <p className="text-white/20 text-[11px] mt-1">
+                  Confidence {Math.round(product.riskConfidence * 100)}%
+                </p>
+              )}
               {product.riskRecommendation && (
                 <p className="text-white/30 text-xs text-center mt-4 leading-relaxed">{product.riskRecommendation}</p>
               )}
+
+              {/* Factor breakdown */}
+              {riskFactors.length > 0 && (
+                <div className="w-full mt-5 flex flex-col gap-2">
+                  <p className="font-equinox text-white/30 text-[10px] tracking-[0.15em]">FACTOR BREAKDOWN</p>
+                  {riskFactors.map((f) => (
+                    <div key={f.name} className="flex flex-col gap-1">
+                      <div className="flex items-center gap-3">
+                        <span className="w-36 text-left text-[11px] text-white/45 truncate">{f.name}</span>
+                        <div className="flex-1 h-[3px] rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${Math.min(100, Math.max(0, f.contribution))}%`,
+                              background: f.contribution >= 50 ? 'rgba(239,68,68,0.7)'
+                                : f.contribution >= 25 ? 'rgba(250,204,21,0.7)'
+                                  : 'rgba(52,211,153,0.6)',
+                            }}
+                          />
+                        </div>
+                        <span className="w-8 text-right text-[11px] font-mono text-white/35">{f.contribution}</span>
+                      </div>
+                      {f.warrantyEndIso && f.daysRemaining != null && (
+                        <p className="text-[10px] text-white/30 leading-snug">
+                          {f.daysRemaining > 0
+                            ? `${f.daysRemaining} day${f.daysRemaining === 1 ? '' : 's'} remaining${f.totalWarrantyDays > 0 ? ` · ${((f.daysRemaining / f.totalWarrantyDays) * 100).toFixed(1)}% of term` : ''} · ends ${f.warrantyEndIso}`
+                            : `warranty ended ${f.warrantyEndIso}`}
+                        </p>
+                      )}
+                      {f.explanation && (
+                        <p className="text-[10px] text-white/25 leading-snug">{f.explanation}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Evidence used */}
+              {Array.isArray(product.riskEvidence) && product.riskEvidence.length > 0 && (
+                <div className="w-full mt-4 text-left">
+                  <p className="font-equinox text-white/30 text-[10px] tracking-[0.15em] mb-2">EVIDENCE USED</p>
+                  <ul className="flex flex-col gap-1.5">
+                    {product.riskEvidence.map((e, i) => (
+                      <li key={i} className="flex items-start gap-2 text-[11px] text-white/40">
+                        <span className="w-1 h-1 rounded-full bg-white/25 mt-1.5 shrink-0" />
+                        <span>{e.description}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Missing evidence warnings */}
+              {Array.isArray(product.riskWarnings) && product.riskWarnings.length > 0 && (
+                <div className="w-full mt-3 text-left">
+                  <p className="font-equinox text-white/30 text-[10px] tracking-[0.15em] mb-2">MISSING EVIDENCE</p>
+                  <ul className="flex flex-col gap-1.5">
+                    {product.riskWarnings.map((w, i) => (
+                      <li key={i} className="flex items-start gap-2 text-[11px] text-amber-200/40">
+                        <span className="w-1 h-1 rounded-full bg-amber-200/40 mt-1.5 shrink-0" />
+                        <span>{w}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Recompute */}
+              <button
+                onClick={handleRecomputeRisk}
+                disabled={recomputing}
+                className="btn-ghost text-[11px] mt-5 py-2 px-4"
+              >
+                {recomputing ? 'Recomputing…' : '↻ Recompute with current data'}
+              </button>
+              {recomputeError && <p className="text-red-300/50 text-[10px] mt-2">{recomputeError}</p>}
             </div>
           )}
 
@@ -401,6 +575,53 @@ export default function ProductDetailPage() {
               <p className="text-white/25 text-sm">—</p>
             )}
           </div>
+        </div>
+
+        {/* Internet research — lazy, runs AFTER the deterministic score */}
+        <div className="data-card mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-equinox text-white/70 text-xs tracking-[0.12em]">INTERNET RESEARCH</h2>
+            <button
+              onClick={loadResearch}
+              disabled={researchLoading}
+              className="btn-ghost text-[11px] py-1.5 px-3"
+            >
+              {researchLoading ? 'Searching…' : '↻ Refresh'}
+            </button>
+          </div>
+          {researchError && <p className="text-red-300/50 text-xs mb-3">{researchError}</p>}
+          {researchEvidence.length === 0 && !researchLoading && !researchError ? (
+            <p className="text-white/20 text-sm">
+              No internet research yet — searches for recalls, advisories and known reliability issues on this product.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {researchEvidence.map((e, i) => (
+                <a
+                  key={i}
+                  href={e.url || undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-start gap-4 py-3 px-2 -mx-2 rounded hover:bg-white/[0.03] transition-colors"
+                  style={{ borderBottom: i < researchEvidence.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}
+                >
+                  <span
+                    className="mt-1.5 shrink-0 text-[9px] font-mono uppercase px-2 py-0.5 rounded-full border"
+                    style={{
+                      color: RESEARCH_COLORS[e.category] ?? 'rgba(255,255,255,0.4)',
+                      borderColor: (RESEARCH_COLORS[e.category] ?? 'rgba(255,255,255,0.2)'),
+                    }}
+                  >
+                    {e.category}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white/70 text-sm leading-snug">{e.title}</p>
+                    {e.snippet && <p className="text-white/30 text-xs mt-1">{e.snippet}</p>}
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

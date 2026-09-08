@@ -51,7 +51,11 @@ const FIELD_LABELS = {
     'date of purchase', 'purchase date', 'order date', 'invoice date',
     'bill date', 'date',
   ],
-  productLabel: ['item', 'description', 'product', 'item description'],
+  productLabel: ['item description', 'product description', 'description', 'product', 'item'],
+  purchasePrice: [
+    'total amount', 'grand total', 'amount payable', 'amount paid',
+    'gross amount', 'total', 'unit price', 'net amount',
+  ],
 };
 
 /**
@@ -308,8 +312,57 @@ function looksLikeTableHeaderRow(value) {
   return headerTokenCount / tokens.length >= 0.5;
 }
 
+/**
+ * Parses a currency string from invoice OCR text into a numeric value.
+ * Handles Rs/INR/₹ prefixes and Indian thousands separators.
+ */
+function parsePriceString(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  let s = raw.trim();
+  s = s.replace(/^(rs\.?|inr|usd|eur|gbp)\s*/i, '');
+  s = s.replace(/[₹$€£\s]/g, '');
+  s = s.replace(/,/g, '');
+  if (!s || !/^\d+(\.\d{1,2})?$/.test(s)) return null;
+  const num = parseFloat(s);
+  return Number.isFinite(num) && num >= 0 ? num : null;
+}
+
+/**
+ * --- PURCHASE PRICE ---
+ * Prefers explicit total/grand-total labels over unit price.
+ */
+function extractPurchasePrice(lines, fullText) {
+  const direct = extractByLabel(lines, FIELD_LABELS.purchasePrice, { labelPriorityFirst: true });
+  if (direct) {
+    const amount = parsePriceString(direct.value);
+    if (amount != null) {
+      return {
+        value: amount,
+        confidence: /total|payable|gross|net/i.test(direct.matchedLabel) ? 0.88 : 0.72,
+        source: `label match: "${direct.matchedLabel}"`,
+      };
+    }
+  }
+
+  const currencyMatch = fullText.match(
+    /(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d{1,2})?)/i
+  );
+  if (currencyMatch) {
+    const amount = parsePriceString(currencyMatch[1]);
+    if (amount != null) {
+      return {
+        value: amount,
+        confidence: 0.45,
+        source: 'document-wide currency pattern (no explicit total label)',
+      };
+    }
+  }
+
+  return { value: null, confidence: 0, source: 'not found' };
+}
+
 function extractProductName(lines, fullText) {
-  const direct = extractByLabel(lines, FIELD_LABELS.productLabel);
+  const direct = extractByLabel(lines, FIELD_LABELS.productLabel, { labelPriorityFirst: true });
   if (direct && !looksLikeTableHeaderRow(direct.value)) {
     let value = direct.value;
     const nextLine = lines[direct.lineIndex + 1];
@@ -441,6 +494,7 @@ export function parseInvoice(rawOcrText) {
   const seller = extractSeller(lines);
   const purchaseDate = extractPurchaseDate(lines, cleanedText);
   const productName = extractProductName(lines, cleanedText);
+  const purchasePrice = extractPurchasePrice(lines, cleanedText);
   const brand = extractBrand(productName.value, cleanedText);
 
   const warrantyDurations = detectWarrantyDurations(cleanedText);
@@ -472,6 +526,7 @@ export function parseInvoice(rawOcrText) {
     productName,
     brand: finalBrand,
     primaryWarranty,
+    purchasePrice,
   });
 
   return {
@@ -482,6 +537,7 @@ export function parseInvoice(rawOcrText) {
     serialNumber: serialNumber.value,
     purchaseDate: purchaseDate.value,
     warrantyMonths: primaryWarranty ? primaryWarranty.months : null,
+    purchasePrice: purchasePrice.value,
     category: classification.category,
     expectedWarrantyMonths: classification.expectedWarrantyMonths,
 
@@ -493,6 +549,7 @@ export function parseInvoice(rawOcrText) {
       serialNumber: serialNumber.confidence,
       purchaseDate: purchaseDate.confidence,
       warrantyMonths: primaryWarranty ? primaryWarranty.confidence : 0,
+      purchasePrice: purchasePrice.confidence,
       category: classification.categoryConfidence,
     },
 
@@ -504,6 +561,7 @@ export function parseInvoice(rawOcrText) {
       serialNumber: serialNumber.source,
       purchaseDate: purchaseDate.source,
       warrantyMonths: primaryWarranty ? primaryWarranty.matchedText : null,
+      purchasePrice: purchasePrice.source,
     },
 
     allWarrantyMentions: warrantyDurations,

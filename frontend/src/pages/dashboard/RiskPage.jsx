@@ -5,9 +5,8 @@ import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { TrendingUp, Package, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useStore } from '../../store/store.js';
+import { RISK_LEVELS, RISK_LEVEL_DEFS, riskLevelFor, riskColorFor, classifyRiskLevel } from '../../lib/engine/ai-engine/riskClassification.js';
 
-const RISK_LEVEL = (s) => s >= 80 ? 'CRITICAL' : s >= 65 ? 'HIGH' : s >= 45 ? 'MEDIUM' : s >= 25 ? 'LOW' : 'MINIMAL';
-const RISK_COLOR = (s) => s >= 80 ? 'rgba(255,255,255,0.9)' : s >= 65 ? 'rgba(255,255,255,0.65)' : s >= 45 ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.22)';
 
 function RiskBar({ score }) {
   return (
@@ -15,7 +14,7 @@ function RiskBar({ score }) {
       <div className="flex-1 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
         <div style={{ width: `${score || 0}%`, height: '100%', background: RISK_COLOR(score), borderRadius: '2px', transition: 'width 800ms ease' }} />
       </div>
-      <span className="text-xs font-mono w-8 text-right shrink-0" style={{ color: RISK_COLOR(score) }}>{score ?? '—'}</span>
+      <span className="text-xs font-mono w-8 text-right shrink-0" style={{ color: riskColorFor(score) }}>{score ?? '—'}</span>
     </div>
   );
 }
@@ -38,8 +37,8 @@ function RiskCard({ product }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono tracking-[0.12em]" style={{ color: RISK_COLOR(score) }}>
-            {score != null ? RISK_LEVEL(score) : '—'}
+          <span className="text-[10px] font-mono tracking-[0.12em]" style={{ color: riskColorFor(score) }}>
+            {score != null ? riskLevelFor(score) : '—'}
           </span>
           <ChevronRight size={13} className="text-white/15 group-hover:text-white/40 transition-colors" />
         </div>
@@ -53,21 +52,13 @@ function RiskCard({ product }) {
 }
 
 function DistributionBar({ products }) {
-  const counts = {
-    CRITICAL: products.filter((p) => (p.riskScore || 0) >= 80).length,
-    HIGH:     products.filter((p) => (p.riskScore || 0) >= 65 && (p.riskScore || 0) < 80).length,
-    MEDIUM:   products.filter((p) => (p.riskScore || 0) >= 45 && (p.riskScore || 0) < 65).length,
-    LOW:      products.filter((p) => (p.riskScore || 0) >= 25 && (p.riskScore || 0) < 45).length,
-    MINIMAL:  products.filter((p) => (p.riskScore || 0) < 25).length,
-  };
+  const counts = Object.fromEntries(
+    RISK_LEVELS.map((level) => [level, products.filter((p) => classifyRiskLevel(p.riskScore)?.level === level).length])
+  );
   const total = products.length || 1;
-  const colors = {
-    CRITICAL: 'rgba(255,255,255,0.85)',
-    HIGH:     'rgba(255,255,255,0.6)',
-    MEDIUM:   'rgba(255,255,255,0.38)',
-    LOW:      'rgba(255,255,255,0.2)',
-    MINIMAL:  'rgba(255,255,255,0.1)',
-  };
+  const colors = Object.fromEntries(
+    RISK_LEVEL_DEFS.map((d) => [d.level, d.color])
+  );
   return (
     <div className="flex flex-col gap-3">
       {Object.entries(counts).map(([level, count]) => (
@@ -92,7 +83,7 @@ export default function RiskPage() {
   );
 
   const withRisk = sorted.filter((p) => p.riskScore != null);
-  const highRisk = sorted.filter((p) => (p.riskScore || 0) >= 65);
+  const highRisk = sorted.filter((p) => ['HIGH', 'CRITICAL'].includes(riskLevelFor(p.riskScore)));
   const avgRisk  = withRisk.length
     ? Math.round(withRisk.reduce((s, p) => s + p.riskScore, 0) / withRisk.length)
     : null;
@@ -118,7 +109,7 @@ export default function RiskPage() {
               { label: 'Products analysed', value: withRisk.length },
               { label: 'High / critical risk', value: highRisk.length, accent: highRisk.length > 0 },
               { label: 'Average risk score', value: avgRisk ?? '—' },
-              { label: 'Needs attention', value: sorted.filter((p) => (p.riskScore || 0) >= 45).length },
+              { label: 'Needs attention', value: sorted.filter((p) => ['MEDIUM', 'HIGH', 'CRITICAL'].includes(riskLevelFor(p.riskScore))).length },
             ].map(({ label, value, accent }) => (
               <div key={label} className="data-card">
                 <p className="text-3xl font-light text-white mb-1" style={{ color: accent ? 'rgba(255,255,255,0.9)' : undefined }}>{value}</p>

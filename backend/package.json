@@ -4,11 +4,17 @@
   "description": "Autonomous Warranty Intelligence Agent — local, free, browser-side warranty reasoning system",
   "type": "module",
   "scripts": {
-    "test": "node tests/run-all.js && node tests/run-agent-tests.js",
+    "start": "node server.js",
+    "test": "node tests/run-all.js && node tests/run-agent-tests.js && node tests/run-server-tests.js && node tests/run-extraction-tests.js && node tests/run-confidence-tests.js && node tests/run-risk-fraud-tests.js",
     "test:phase1": "node tests/run-all.js",
-    "test:phase1.5": "node tests/run-agent-tests.js"
+    "test:phase1.5": "node tests/run-agent-tests.js",
+    "test:server": "node tests/run-server-tests.js && node tests/run-extraction-tests.js",
+    "test:e2e": "node tests/e2e-dummy-invoice.mjs"
   },
   "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
     "tesseract.js": "^5.1.0"
   },
   "license": "ISC"

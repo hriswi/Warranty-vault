@@ -23,18 +23,25 @@
  */
 
 import { createWorker } from 'tesseract.js';
+import { renderPdfPageToCanvas, getPdfPageCount } from './pdfRenderer.js';
 
 /**
  * Default Tesseract recognition options tuned for invoices/receipts:
  * mostly printed text, mixed font sizes, often low-contrast thermal
  * prints or phone-camera photos of paper receipts.
+ *
+ * Optimizations for speed:
+ *  - PSM 6: assume a single uniform block of text (faster, good for invoices)
+ *  - OEM 3: default LSTM engine (fastest available)
+ *  - Disable unnecessary features when we just want raw text
  */
 const DEFAULT_TESSERACT_OPTIONS = {
   lang: 'eng',
-  // PSM 3 = fully automatic page segmentation (no OSD). Good default for
-  // multi-block documents like invoices that mix headers, tables, and
-  // free text. Callers can override (e.g. PSM 6 for a single uniform block).
-  tessedit_pageseg_mode: '3',
+  tessedit_pageseg_mode: '6',
+  tessedit_ocr_engine_mode: '3',
+  hOCR_charinfo_enable: '0',
+  textord_heavy_nr: '0',
+  textord_min_linesize: '2.5',
 };
 
 /**
@@ -44,12 +51,40 @@ const DEFAULT_TESSERACT_OPTIONS = {
  * instead of creating/terminating one per call.
  */
 let workerPromise = null;
+let workerInitPromise = null;
 
-async function getWorker(lang = 'eng') {
+async function getWorker(lang = 'eng', onProgress) {
   if (!workerPromise) {
-    workerPromise = createWorker(lang).then(async (worker) => {
-      return worker;
-    });
+    if (!workerInitPromise) {
+      workerInitPromise = (async () => {
+        try {
+          const worker = await createWorker(lang, 1, {
+            logger: (m) => {
+              try {
+                if (m.status === 'loading tesseract core') onProgress?.({ stage: 'Loading OCR engine…', progress: 0.05 });
+                else if (m.status === 'initializing tesseract') onProgress?.({ stage: 'Initializing engine…', progress: 0.12 });
+                else if (m.status === 'loading language traineddata') onProgress?.({ stage: 'Loading language data…', progress: 0.25 + (m.progress || 0) * 0.2 });
+                else if (m.status === 'initializing api') onProgress?.({ stage: 'Warming up…', progress: 0.5 });
+                else if (m.status === 'recognizing text') onProgress?.({ stage: 'Reading invoice…', progress: 0.55 + (m.progress || 0) * 0.45 });
+              } catch (_) { /* ignore progress reporting errors */ }
+            },
+          });
+          try {
+            await worker.setParameters({
+              tessedit_pageseg_mode: DEFAULT_TESSERACT_OPTIONS.tessedit_pageseg_mode,
+              tessedit_ocr_engine_mode: DEFAULT_TESSERACT_OPTIONS.tessedit_ocr_engine_mode,
+            });
+          } catch (_) { /* non-critical if params fail */ }
+          workerPromise = Promise.resolve(worker);
+          workerInitPromise = null;
+          return worker;
+        } catch (err) {
+          workerInitPromise = null;
+          throw err;
+        }
+      })();
+    }
+    return workerInitPromise;
   }
   return workerPromise;
 }
@@ -86,6 +121,47 @@ export async function terminateOcrEngine() {
  *   engine: 'tesseract.js'
  * }>}
  */
+async function preprocessImageForOcr(image) {
+  try {
+    if (typeof document === 'undefined' || typeof HTMLCanvasElement === 'undefined') {
+      return image;
+    }
+    if (image instanceof File || image instanceof Blob) {
+      const bitmap = await createImageBitmap(image);
+      const maxDim = 1800;
+      let { width, height } = bitmap;
+      const scale = Math.min(1, maxDim / Math.max(width, height));
+      if (scale < 1) {
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: false });
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      if (typeof bitmap.close === 'function') try { bitmap.close(); } catch (_) { /* ignore */ }
+      return canvas;
+    }
+    if (image instanceof HTMLImageElement) {
+      const maxDim = 1800;
+      let { naturalWidth: width, naturalHeight: height } = image;
+      const scale = Math.min(1, maxDim / Math.max(width, height));
+      if (scale < 1) {
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: false });
+        ctx.drawImage(image, 0, 0, width, height);
+        return canvas;
+      }
+    }
+  } catch (_) { /* fallback: use the original image */ }
+  return image;
+}
+
 export async function extractTextFromImage(image, options = {}) {
   if (!image) {
     throw new OcrError('NO_INPUT', 'No image, file, or buffer was provided to the OCR engine.');
@@ -93,10 +169,14 @@ export async function extractTextFromImage(image, options = {}) {
 
   const lang = options.lang || DEFAULT_TESSERACT_OPTIONS.lang;
   const minWordConfidence = options.minWordConfidence ?? 60;
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+
+  onProgress?.({ stage: 'Preparing image…', progress: 0.02 });
+  const preparedImage = await preprocessImageForOcr(image);
 
   let worker;
   try {
-    worker = await getWorker(lang);
+    worker = await getWorker(lang, onProgress);
   } catch (err) {
     throw new OcrError(
       'WORKER_INIT_FAILED',
@@ -105,12 +185,17 @@ export async function extractTextFromImage(image, options = {}) {
   }
 
   if (options.pageSegMode) {
-    await worker.setParameters({ tessedit_pageseg_mode: options.pageSegMode });
+    try {
+      await worker.setParameters({ tessedit_pageseg_mode: options.pageSegMode });
+    } catch (_) { /* non-critical */ }
   }
 
   let result;
   try {
-    result = await worker.recognize(image);
+    if (onProgress) {
+      onProgress({ stage: 'Reading invoice text…', progress: 0.55 });
+    }
+    result = await worker.recognize(preparedImage);
   } catch (err) {
     throw new OcrError(
       'RECOGNITION_FAILED',
@@ -118,43 +203,46 @@ export async function extractTextFromImage(image, options = {}) {
     );
   }
 
-  const data = result.data || {};
+  onProgress?.({ stage: 'Finalizing extraction…', progress: 0.97 });
+
+  const data = result?.data || {};
   const rawText = data.text || '';
 
   // Flatten word-level confidence data across all blocks/paragraphs/lines.
   const words = [];
   const lines = [];
 
-  const blocks = data.blocks || [];
-  for (const block of blocks) {
-    for (const paragraph of block.paragraphs || []) {
-      for (const line of paragraph.lines || []) {
-        lines.push({
-          text: (line.text || '').trim(),
-          confidence: line.confidence ?? 0,
-        });
-        for (const word of line.words || []) {
-          words.push({
-            text: word.text,
-            confidence: word.confidence ?? 0,
-            bbox: word.bbox,
+  try {
+    const blocks = data.blocks || [];
+    for (const block of blocks) {
+      for (const paragraph of block.paragraphs || []) {
+        for (const line of paragraph.lines || []) {
+          lines.push({
+            text: (line.text || '').trim(),
+            confidence: line.confidence ?? 0,
           });
+          for (const word of line.words || []) {
+            words.push({
+              text: word.text,
+              confidence: word.confidence ?? 0,
+              bbox: word.bbox,
+            });
+          }
         }
       }
     }
-  }
 
-  // Fallback: some Tesseract.js builds return data.words directly
-  // instead of the nested blocks->paragraphs->lines->words tree.
-  if (words.length === 0 && Array.isArray(data.words)) {
-    for (const word of data.words) {
-      words.push({
-        text: word.text,
-        confidence: word.confidence ?? 0,
-        bbox: word.bbox,
-      });
+    // Fallback: some Tesseract.js builds return data.words directly
+    if (words.length === 0 && Array.isArray(data.words)) {
+      for (const word of data.words) {
+        words.push({
+          text: word.text,
+          confidence: word.confidence ?? 0,
+          bbox: word.bbox,
+        });
+      }
     }
-  }
+  } catch (_) { /* ignore flattening errors — rawText is the critical output */ }
 
   const lowConfidenceWords = words.filter((w) => w.confidence < minWordConfidence);
 
@@ -226,16 +314,9 @@ export async function rasterizePdfPage(pdfSource, pageNumber = 1, options = {}) 
   if (!pdfSource) {
     throw new OcrError('NO_INPUT', 'No PDF source provided for rasterization.');
   }
-  if (typeof options.renderer !== 'function') {
-    throw new OcrError(
-      'NO_PDF_RENDERER',
-      'rasterizePdfPage requires a `renderer` function backed by pdf.js (pdfjs-dist). ' +
-        'Wire this up in the app layer: import * as pdfjsLib from "pdfjs-dist" and pass ' +
-        'a function that loads the document and renders the requested page to a canvas.'
-    );
-  }
+  const renderer = typeof options.renderer === 'function' ? options.renderer : renderPdfPageToCanvas;
   const scale = options.scale || 2.5;
-  const canvas = await options.renderer(pdfSource, pageNumber, scale);
+  const canvas = await renderer(pdfSource, pageNumber, scale);
   if (!canvas) {
     throw new OcrError('PDF_RENDER_FAILED', `Failed to rasterize PDF page ${pageNumber}.`);
   }
@@ -250,10 +331,85 @@ export async function rasterizePdfPage(pdfSource, pageNumber = 1, options = {}) 
  * This is the function the upload UI should call.
  */
 export async function extractInvoiceText(file, options = {}) {
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+
   if (isPdfFile(file)) {
-    const canvas = await rasterizePdfPage(file, options.pageNumber || 1, options);
-    return extractTextFromImage(canvas, options);
+    let numPages;
+    try {
+      onProgress?.({ stage: 'Reading PDF…', progress: 0.02 });
+      numPages = await getPdfPageCount(file);
+    } catch (err) {
+      throw new OcrError('PDF_LOAD_FAILED', `Failed to read the PDF: ${err.message || err}`);
+    }
+
+    const maxPages = Math.max(1, Math.min(numPages, options.maxPdfPages ?? 3));
+    const perPageWeight = 0.85 / maxPages;
+    const baseProgress = 0.05;
+
+    let combinedText = '';
+    let totalConfidence = 0;
+    let pageResults = 0;
+    const allWords = [];
+    const allLines = [];
+    const allLowConf = [];
+
+    for (let i = 1; i <= maxPages; i++) {
+      const pageBaseP = baseProgress + ((i - 1) * perPageWeight);
+      onProgress?.({
+        stage: maxPages > 1 ? `Reading PDF page ${i}/${maxPages}…` : 'Rendering PDF page…',
+        progress: Math.min(0.9, pageBaseP),
+      });
+
+      const canvas = await rasterizePdfPage(file, i, { ...options, pageNumber: i });
+
+      const pageOcrOptions = {
+        ...options,
+        onProgress: ({ stage: s, progress: p }) => {
+          if (s) {
+            onProgress?.({
+              stage: maxPages > 1 ? `Page ${i}: ${s}` : s,
+              progress: Math.min(0.9, pageBaseP + (p * perPageWeight * 0.9)),
+            });
+          }
+        },
+      };
+
+      const result = await extractTextFromImage(canvas, pageOcrOptions);
+
+      if (result?.rawText) {
+        combinedText += (combinedText ? '\n\n' : '') + result.rawText.trim();
+        allWords.push(...(result.words || []));
+        allLines.push(...(result.lines || []));
+        allLowConf.push(...(result.lowConfidenceWords || []));
+        if (typeof result.confidence === 'number') {
+          totalConfidence += result.confidence;
+          pageResults++;
+        }
+      }
+
+      try {
+        if (canvas instanceof HTMLCanvasElement) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) try { ctx.clearRect(0, 0, canvas.width, canvas.height); } catch (_) { /* ignore */ }
+          canvas.width = 1; canvas.height = 1;
+        }
+      } catch (_) { /* ignore cleanup */ }
+    }
+
+    onProgress?.({ stage: 'Finalizing extraction…', progress: 0.97 });
+
+    return {
+      rawText: combinedText,
+      confidence: pageResults > 0 ? Math.round((totalConfidence / pageResults) * 100) / 100 : 0,
+      words: allWords,
+      lowConfidenceWords: allLowConf,
+      lines: allLines,
+      engine: 'tesseract.js',
+      pdfPagesProcessed: maxPages,
+      pdfTotalPages: numPages,
+    };
   }
+
   return extractTextFromImage(file, options);
 }
 

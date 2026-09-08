@@ -191,6 +191,56 @@ h1, h2, h3, .heading {
 }
 .input-field:hover:not(:focus) { border-color: rgba(255,255,255,0.12); }
 
+/* ── Select / Dropdown dark theme ─────────────────────────────────────── */
+select.input-field,
+.input-field[type="date"] {
+  color-scheme: dark;
+}
+select.input-field option {
+  background: #0f0f0f;
+  color: rgba(255,255,255,0.85);
+  border: none;
+}
+select.input-field optgroup {
+  background: #0a0a0a;
+  color: rgba(255,255,255,0.5);
+}
+
+/* Native date/time picker dark theme (WebKit/Blink) */
+.input-field::-webkit-calendar-picker-indicator,
+.input-field[type="date"]::-webkit-calendar-picker-indicator,
+.input-field[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(0.8);
+  opacity: 0.5;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  transition: opacity 150ms ease;
+}
+.input-field::-webkit-calendar-picker-indicator:hover,
+.input-field[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 0.9;
+}
+
+/* Firefox native date picker */
+.input-field[type="date"]::-moz-calendar-picker-indicator {
+  filter: invert(1) brightness(0.8);
+}
+
+/* Number input spinners dark */
+.input-field[type="number"]::-webkit-inner-spin-button,
+.input-field[type="number"]::-webkit-outer-spin-button {
+  filter: invert(1) brightness(0.7);
+  opacity: 0.4;
+}
+
+/* Color inputs dark backdrop for fallback native calendars */
+@supports not selector(::-webkit-calendar-picker-indicator) {
+  .input-field[type="date"] {
+    background: rgba(255,255,255,0.06);
+  }
+}
+
 /* ── Risk badges ──────────────────────────────────────────────────────── */
 .badge {
   display: inline-flex;

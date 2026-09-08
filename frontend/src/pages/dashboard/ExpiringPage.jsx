@@ -5,16 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, Package, ChevronRight, ArrowUpRight } from 'lucide-react';
 import { useStore } from '../../store/store.js';
-import { differenceInDays } from 'date-fns';
-
-function getWarrantyStatus(product) {
-  if (!product.purchaseDate || !product.warrantyMonths) return null;
-  const purchase = new Date(product.purchaseDate);
-  const expiry = new Date(purchase);
-  expiry.setMonth(expiry.getMonth() + product.warrantyMonths);
-  const days = differenceInDays(expiry, new Date());
-  return { days, expiry, isExpired: days < 0, isExpiring: days >= 0 && days <= 90 };
-}
+import { getWarrantyTimeline } from '../../lib/warrantyStatus.js';
 
 function UrgencyBadge({ days }) {
   if (days <= 0)  return <span className="badge badge-critical">Expired</span>;
@@ -67,8 +58,8 @@ export default function ExpiringPage() {
 
   const expiring = useMemo(() => {
     return products
-      .map((p) => ({ product: p, ws: getWarrantyStatus(p) }))
-      .filter(({ ws }) => ws && ws.days >= 0 && ws.days <= window)
+      .map((p) => ({ product: p, ws: getWarrantyTimeline(p) }))
+      .filter(({ ws }) => ws && !ws.isExpired && ws.days <= window)
       .sort((a, b) => a.ws.days - b.ws.days);
   }, [products, window]);
 

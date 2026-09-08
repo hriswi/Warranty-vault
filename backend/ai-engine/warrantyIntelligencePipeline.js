@@ -13,9 +13,10 @@
  *   [2] Parse       → parseInvoice (invoiceParser)
  *   [3] Classify    → (already embedded in invoiceParser via productClassifier)
  *   [4] Warranty    → (already embedded in invoiceParser via warrantyDurationParser)
- *   [5] Risk        → computeProductRisk (productRiskEngine)
- *   [6] Advisory    → generateWarrantyAdvisory (warrantyAdvisorEngine)
- *   [7] Fraud       → analyzeInvoiceFraud (fraudDetectionEngine)
+ *   [5] Fraud       → analyzeInvoiceFraud (fraudDetectionEngine) — runs BEFORE
+ *                     risk so the risk engine can consume its signals
+ *   [6] Risk        → computeProductRisk (productRiskEngine)
+ *   [7] Advisory    → generateWarrantyAdvisory (warrantyAdvisorEngine)
  *   [8] Eligibility → evaluateWarrantyClaim (warrantyEligibilityEngine) [optional, requires issue]
  *
  * Usage — full pipeline with a real image file (browser/Node with Tesseract):
@@ -89,23 +90,24 @@ export async function processInvoiceText(rawOcrText, options = {}) {
 
   const parsedInvoice = parseStage.data;
 
-  // ── STAGE 2: RISK SCORING ─────────────────────────────────────────────────
-  const riskStage = await runStage('riskScoring', () =>
-    computeProductRisk(parsedInvoice, referenceDate)
-  );
-  stages.riskScoring = riskStage;
-
-  // ── STAGE 3: WARRANTY ADVISORY ────────────────────────────────────────────
-  const advisoryStage = await runStage('warrantyAdvisory', () =>
-    generateWarrantyAdvisory(parsedInvoice, referenceDate)
-  );
-  stages.warrantyAdvisory = advisoryStage;
-
-  // ── STAGE 4: FRAUD DETECTION ──────────────────────────────────────────────
+  // ── STAGE 2: FRAUD DETECTION (BEFORE RISK — the risk engine consumes ───────
+  //    its signals for the invoice-integrity factor) ──────────────────────────
   const fraudStage = await runStage('fraudDetection', () =>
     analyzeInvoiceFraud(parsedInvoice, rawOcrText, { seenInvoiceNumbers, invoiceRegistry })
   );
   stages.fraudDetection = fraudStage;
+
+  // ── STAGE 3: RISK SCORING (uses fraud signals for integrity) ───────────────
+  const riskStage = await runStage('riskScoring', () =>
+    computeProductRisk(parsedInvoice, referenceDate, { fraudReport: fraudStage.data })
+  );
+  stages.riskScoring = riskStage;
+
+  // ── STAGE 4: WARRANTY ADVISORY ─────────────────────────────────────────────
+  const advisoryStage = await runStage('warrantyAdvisory', () =>
+    generateWarrantyAdvisory(parsedInvoice, referenceDate)
+  );
+  stages.warrantyAdvisory = advisoryStage;
 
   // ── STAGE 5: ELIGIBILITY (only if issue description provided) ─────────────
   let eligibilityStage = null;
@@ -144,13 +146,20 @@ export async function processInvoiceText(rawOcrText, options = {}) {
       fieldConfidence: parsedInvoice.fieldConfidence,
     },
 
-    // Risk assessment.
+    // Risk assessment (full explainable breakdown).
     risk: riskStage.success ? {
       riskScore: riskStage.data.riskScore,
       riskLevel: riskStage.data.riskLevel,
       riskLevelLabel: riskStage.data.riskLevelLabel,
+      riskReason: riskStage.data.riskReason,
       recommendation: riskStage.data.recommendation,
+      riskConfidence: riskStage.data.riskConfidence,
+      riskFactors: riskStage.data.riskFactors,
+      riskEvidence: riskStage.data.riskEvidence,
+      riskWarnings: riskStage.data.riskWarnings,
       components: riskStage.data.components,
+      repairContext: riskStage.data.repairContext,
+      riskLastCalculatedAt: riskStage.data.riskLastCalculatedAt,
     } : { error: riskStage.error },
 
     // Warranty advisory.

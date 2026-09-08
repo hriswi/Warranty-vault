@@ -30,7 +30,7 @@
  *   - reasoning: array of human-readable explanation strings
  */
 
-import { daysBetween, addMonths } from '../utils/dateUtils.js';
+import { daysBetween, addMonths, toISODateOnly } from '../utils/dateUtils.js';
 import { normalizeKey } from '../utils/textUtils.js';
 import {
   ISSUE_TYPES,
@@ -121,10 +121,10 @@ function checkWarrantyStatus(parsedInvoice, referenceDate) {
     return {
       status: 'active',
       daysRemaining,
-      expiryDate: expiryDate.toISOString().split('T')[0],
+      expiryDate: toISODateOnly(expiryDate),
       warrantyMonths: durationMonths,
       confidence: parsedInvoice.fieldConfidence?.purchaseDate >= 0.6 ? 0.9 : 0.6,
-      reason: `Product is within warranty period. ${daysRemaining} day(s) remaining until ${expiryDate.toISOString().split('T')[0]}.`,
+      reason: `Product is within warranty period. ${daysRemaining} day(s) remaining until ${toISODateOnly(expiryDate)}.`,
     };
   } else {
     const daysExpired = Math.abs(daysRemaining);
@@ -132,10 +132,10 @@ function checkWarrantyStatus(parsedInvoice, referenceDate) {
       status: 'expired',
       daysRemaining: daysRemaining, // negative = expired X days ago
       daysExpired,
-      expiryDate: expiryDate.toISOString().split('T')[0],
+      expiryDate: toISODateOnly(expiryDate),
       warrantyMonths: durationMonths,
       confidence: parsedInvoice.fieldConfidence?.purchaseDate >= 0.6 ? 0.9 : 0.6,
-      reason: `Warranty expired ${daysExpired} day(s) ago (${expiryDate.toISOString().split('T')[0]}). Standard warranty claims are no longer applicable, but check for extended component warranties.`,
+      reason: `Warranty expired ${daysExpired} day(s) ago (${toISODateOnly(expiryDate)}). Standard warranty claims are no longer applicable, but check for extended component warranties.`,
     };
   }
 }

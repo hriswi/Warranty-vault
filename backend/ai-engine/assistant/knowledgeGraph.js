@@ -31,7 +31,7 @@
  * the 6 sample fixtures.
  */
 
-import { daysBetween, addMonths } from '../../utils/dateUtils.js';
+import { daysBetween, addMonths, toISODateOnly } from '../../utils/dateUtils.js';
 import { normalizeKey, bestFuzzyMatch } from '../../utils/textUtils.js';
 
 export class WarrantyKnowledgeGraph {
@@ -150,7 +150,7 @@ export class WarrantyKnowledgeGraph {
     const daysUsed = daysBetween(purchase, referenceDate);
 
     return {
-      expiryDate: expiry.toISOString().split('T')[0],
+      expiryDate: toISODateOnly(expiry),
       daysRemaining,
       daysUsed: Math.max(0, daysUsed),
       totalDays,
@@ -217,7 +217,7 @@ export class WarrantyKnowledgeGraph {
     })).sort((a, b) => (a.warrantyTimeline?.daysRemaining || 0) - (b.warrantyTimeline?.daysRemaining || 0));
   }
 
-  getHighRiskProducts(threshold = 65) {
+  getHighRiskProducts(threshold = 50) {
     return this.getAllProducts()
       .filter((p) => p.risk && p.risk.riskScore >= threshold)
       .sort((a, b) => (b.risk?.riskScore || 0) - (a.risk?.riskScore || 0));
@@ -267,7 +267,7 @@ export class WarrantyKnowledgeGraph {
     const active = all.filter((p) => p.warrantyTimeline?.isActive);
     const expired = all.filter((p) => p.warrantyTimeline?.isExpired);
     const expiringSoon30 = this.getProductsExpiringSoon(30, false, referenceDate);
-    const highRisk = this.getHighRiskProducts(65);
+    const highRisk = this.getHighRiskProducts();
     const suspicious = this.getSuspiciousProducts();
 
     return {

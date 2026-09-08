@@ -25,7 +25,7 @@
  *   - reasoning (transparency array)
  */
 
-import { daysBetween, addMonths } from '../utils/dateUtils.js';
+import { daysBetween, addMonths, toISODateOnly } from '../utils/dateUtils.js';
 import { getRepairCostData, getRepairCostRange } from '../data/repairCostDatabase.js';
 
 // Urgency thresholds (days until expiry → urgency level).
@@ -71,7 +71,7 @@ export function generateWarrantyAdvisory(parsedInvoice, referenceDate = new Date
     warrantyTimeline = { purchase, expiryDate, daysRemaining, daysUsed, totalDays, percentUsed, durationMonths };
     reasoning.push(
       `[TIMELINE] Purchase: ${purchaseDate}. Warranty: ${durationMonths} months. ` +
-        `Expiry: ${expiryDate.toISOString().split('T')[0]}. ` +
+        `Expiry: ${toISODateOnly(expiryDate)}. ` +
         `${daysRemaining > 0 ? `${daysRemaining} days remaining (${percentUsed}% of warranty used).` : `Expired ${Math.abs(daysRemaining)} days ago.`}`
     );
   } else {
@@ -179,7 +179,7 @@ export function generateWarrantyAdvisory(parsedInvoice, referenceDate = new Date
 
     warrantyTimeline: warrantyTimeline
       ? {
-          expiryDate: warrantyTimeline.expiryDate.toISOString().split('T')[0],
+          expiryDate: toISODateOnly(warrantyTimeline.expiryDate),
           daysRemaining: warrantyTimeline.daysRemaining,
           daysUsed: warrantyTimeline.daysUsed,
           totalDays: warrantyTimeline.totalDays,
@@ -228,7 +228,7 @@ function buildAdvisoryActions(ctx) {
       priority: 1,
       type: 'URGENT_SERVICE',
       title: `Warranty expires in ${dr} day(s) — Book a preventive service inspection NOW`,
-      detail: `Your warranty expires on ${warrantyTimeline.expiryDate.toISOString().split('T')[0]}. ` +
+      detail: `Your warranty expires on ${toISODateOnly(warrantyTimeline.expiryDate)}. ` +
         `Schedule a diagnostic inspection at an authorized service center immediately. Any latent defects ` +
         `must be reported BEFORE expiry to qualify for warranty repair.`,
     });

@@ -4,7 +4,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { gsap } from 'gsap';
-import { Eye, EyeOff, Mail, Lock, ArrowRight, Chrome } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, ArrowRight, Check } from 'lucide-react';
+import GoogleIcon from '../../components/ui/GoogleIcon.jsx';
 import { useAuth } from '../../hooks/useAuth.jsx';
 
 function FirebaseErrorMessage(code) {
@@ -31,20 +32,29 @@ export default function LoginPage() {
   const [showPwd, setShowPwd]     = useState(false);
   const [loading, setLoading]     = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [signedIn, setSignedIn]   = useState(false);
   const [error, setError]         = useState('');
+  const [notice, setNotice]       = useState('');
 
   const containerRef = useRef(null);
 
   useEffect(() => {
-    if (isAuthenticated) { navigate(from, { replace: true }); return; }
-    gsap.set(containerRef.current, { opacity: 0, y: 24 });
-    gsap.to(containerRef.current, { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out', delay: 0.1 });
-  }, [isAuthenticated]);
+    if (!isAuthenticated) {
+      gsap.set(containerRef.current, { opacity: 0, y: 24 });
+      gsap.to(containerRef.current, { opacity: 1, y: 0, duration: 0.7, ease: 'power2.out', delay: 0.1 });
+      return undefined;
+    }
+    // Brief "signed in" transition after a successful Google login.
+    const delay = signedIn ? 800 : 0;
+    const t = setTimeout(() => navigate(from, { replace: true }), delay);
+    return () => clearTimeout(t);
+  }, [isAuthenticated, signedIn]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) { setError('Please fill in all fields.'); return; }
     setError('');
+    setNotice('');
     setLoading(true);
     try {
       await login(email, password);
@@ -57,14 +67,19 @@ export default function LoginPage() {
   };
 
   const handleGoogle = async () => {
+    if (googleLoading || loading || signedIn) return;
     setError('');
+    setNotice('');
     setGoogleLoading(true);
     try {
       await loginWithGoogle();
-      navigate(from, { replace: true });
+      setSignedIn(true);
     } catch (err) {
-      if (err.code !== 'auth/popup-closed-by-user') {
-        setError(FirebaseErrorMessage(err.code));
+      const code = err?.code || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        setNotice('Google sign-in was cancelled.');
+      } else {
+        setError(FirebaseErrorMessage(code));
       }
     } finally {
       setGoogleLoading(false);
@@ -120,17 +135,17 @@ export default function LoginPage() {
           {/* Google auth */}
           <button
             onClick={handleGoogle}
-            disabled={googleLoading || loading}
+            disabled={googleLoading || loading || signedIn}
             className="w-full flex items-center justify-center gap-3 py-3 mb-6 rounded-md text-sm font-medium"
             style={{
               background: 'rgba(255,255,255,0.04)',
               border: '1px solid rgba(255,255,255,0.1)',
               color: 'rgba(255,255,255,0.7)',
               transition: 'background 200ms, border-color 200ms',
-              cursor: googleLoading || loading ? 'not-allowed' : 'pointer',
+              cursor: googleLoading || loading || signedIn ? 'not-allowed' : 'pointer',
             }}
             onMouseEnter={(e) => {
-              if (!googleLoading && !loading) {
+              if (!googleLoading && !loading && !signedIn) {
                 e.currentTarget.style.background = 'rgba(255,255,255,0.07)';
                 e.currentTarget.style.borderColor = 'rgba(255,255,255,0.17)';
               }
@@ -140,13 +155,24 @@ export default function LoginPage() {
               e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
             }}
           >
-            {googleLoading ? (
+            {signedIn ? (
+              <>
+                <Check size={16} /> Signed in
+              </>
+            ) : googleLoading ? (
               <div className="w-4 h-4 border border-white/20 border-t-white/60 rounded-full animate-spin" />
             ) : (
-              <Chrome size={16} />
+              <>
+                <GoogleIcon size={16} /> Continue with Google
+              </>
             )}
-            Continue with Google
           </button>
+
+          {notice && (
+            <p className="text-xs px-4 py-3 rounded-md mb-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.35)' }}>
+              {notice}
+            </p>
+          )}
 
           {/* Divider */}
           <div className="flex items-center gap-4 mb-6">

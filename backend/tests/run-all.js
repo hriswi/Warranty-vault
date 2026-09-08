@@ -537,30 +537,103 @@ await test('Eligibility: recommended steps present for covered claim', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 section('productRiskEngine');
 
-await test('Risk: score is 0–100', () => {
-  const r = computeProductRisk(dellLaptopInvoice, new Date('2024-06-01'));
-  assertRange(r.riskScore, 0, 100, 'score in range');
+const RISK_REF = new Date('2026-08-13');
+const RISK_THINKPAD = {
+  productName: 'Lenovo ThinkPad E14 Gen 5',
+  brand: 'Lenovo',
+  category: 'Laptop',
+  purchaseDate: '2026-08-10',
+  warrantyMonths: 24,
+  overallConfidence: 0.95,
+  invoiceNumber: 'TH-INV-2026-0810-0042',
+  serialNumber: 'PF4X9K7L2M',
+  seller: 'TechHub Electronics Pvt. Ltd.',
+  price: 'Rs. 84,960',
+};
+const RISK_NO_FLAGS = { signals: [], fraudScore: 0, warningLevel: 'NONE' };
+const RISK_RECALL = [{ title: 'Lenovo ThinkPad recall issued', url: 'https://example.com/recall' }];
+const RISK_DEFECT = [{ title: 'ThinkPad battery defect reports', url: 'https://example.com/defect' }];
+
+await test('Risk S1: new in-warranty product, high extraction confidence → LOW', () => {
+  const r = computeProductRisk(RISK_THINKPAD, RISK_REF, { fraudReport: RISK_NO_FLAGS });
+  assertEqual(r.riskLevel, 'LOW', 'level LOW');
+  assertRange(r.riskScore, 0, 24, 'score < 25');
+  assert(r.riskConfidence >= 0.9, 'confidence reflects high extraction quality');
 });
 
-await test('Risk: expired warranty boosts risk (>50)', () => {
-  const r = computeProductRisk(dellLaptopInvoice, new Date('2027-01-01')); // expired
-  assertRange(r.riskScore, 50, 100, 'expired warranty → higher risk');
+await test('Risk S2: expiring warranty (~24% of term left) → MEDIUM', () => {
+  const r = computeProductRisk({ ...RISK_THINKPAD, purchaseDate: '2025-02-01' }, RISK_REF, { fraudReport: RISK_NO_FLAGS });
+  assertEqual(r.riskLevel, 'MEDIUM', 'level MEDIUM');
+  assertRange(r.riskScore, 25, 49, 'score 25-49');
 });
 
-await test('Risk: low-confidence invoice increases risk', () => {
-  const noisyInvoice = parseInvoice(SAMPLE_INVOICES.noisyUnreadableReceipt.rawText);
-  const r = computeProductRisk(noisyInvoice, new Date('2024-06-01'));
-  assert(r.riskFactors.find((f) => f.factor === 'Invoice Data Confidence').score >= 80, 'low confidence → high data risk score component');
+await test('Risk S3: out-of-warranty product, high confidence → HIGH', () => {
+  const r = computeProductRisk({ ...RISK_THINKPAD, purchaseDate: '2020-08-10' }, RISK_REF, { fraudReport: RISK_NO_FLAGS });
+  assertEqual(r.riskLevel, 'HIGH', 'level HIGH');
+  assertRange(r.riskScore, 50, 74, 'score 50-74');
 });
 
-await test('Risk: riskFactors array has all 5 components', () => {
-  const r = computeProductRisk(dellLaptopInvoice, new Date('2024-06-01'));
-  assertEqual(r.riskFactors.length, 5, '5 risk factor components');
+await test('Risk S4: in-warranty + recall evidence → MEDIUM', () => {
+  const r = computeProductRisk(RISK_THINKPAD, RISK_REF, { fraudReport: RISK_NO_FLAGS, externalEvidence: RISK_RECALL });
+  assertEqual(r.riskLevel, 'MEDIUM', 'level MEDIUM');
+  assert(r.riskFactors.some((f) => f.name === 'Recalls & advisories'), 'research factor present');
 });
 
-await test('Risk: riskLevel is a recognised value', () => {
-  const r = computeProductRisk(dellLaptopInvoice, new Date('2024-06-01'));
-  assertContains(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'MINIMAL'], r.riskLevel, 'valid risk level');
+await test('Risk S5: out-of-warranty + recall evidence → CRITICAL', () => {
+  const r = computeProductRisk({ ...RISK_THINKPAD, purchaseDate: '2020-08-10' }, RISK_REF, { fraudReport: RISK_NO_FLAGS, externalEvidence: RISK_RECALL });
+  assertEqual(r.riskLevel, 'CRITICAL', 'level CRITICAL');
+  assert(r.riskScore >= 75, 'score >= 75');
+});
+
+await test('Risk S6: tampered invoice (placeholder number + future date) → HIGH', () => {
+  const r = computeProductRisk({ ...RISK_THINKPAD, purchaseDate: '2027-01-01', invoiceNumber: 'NEW-001' }, RISK_REF, {
+    fraudReport: {
+      signals: [
+        { type: 'PLACEHOLDER_INVOICE_NUMBER', severity: 0.8, detail: 'Placeholder invoice number' },
+        { type: 'FUTURE_PURCHASE_DATE', severity: 0.5, detail: 'Purchase date in the future' },
+      ],
+      fraudScore: 65,
+      warningLevel: 'SUSPICIOUS',
+    },
+  });
+  assertEqual(r.riskLevel, 'HIGH', 'level HIGH');
+  const integrity = r.riskFactors.find((f) => f.name === 'Invoice integrity');
+  assert(integrity && integrity.contribution >= 40, 'integrity factor driven by fraud signals');
+});
+
+await test('Risk S7: only a product name → INSUFFICIENT_DATA (score is never invented)', () => {
+  const r = computeProductRisk({ productName: 'X' }, RISK_REF);
+  assertEqual(r.riskLevel, 'INSUFFICIENT_DATA', 'level INSUFFICIENT_DATA');
+  assertEqual(r.riskScore, null, 'score is null, not fabricated');
+  assert(r.riskWarnings.length >= 3, 'missing evidence warnings listed');
+});
+
+await test('Risk S8: partial data (name + category) → INSUFFICIENT_DATA', () => {
+  const r = computeProductRisk({ productName: 'X', category: 'Laptop' }, RISK_REF);
+  assertEqual(r.riskLevel, 'INSUFFICIENT_DATA', 'level INSUFFICIENT_DATA');
+  assertEqual(r.riskScore, null, 'score is null');
+});
+
+await test('Risk S9: high-failure category + reliability evidence → HIGH', () => {
+  const r = computeProductRisk(RISK_THINKPAD, RISK_REF, { fraudReport: RISK_NO_FLAGS, externalEvidence: RISK_DEFECT });
+  assertEqual(r.riskLevel, 'HIGH', 'level HIGH');
+  const research = r.riskFactors.find((f) => f.name === 'Recalls & advisories');
+  assert(research && research.contribution >= 30, 'defect evidence contributes strongly');
+});
+
+await test('Risk S10: out-of-warranty + low extraction confidence → CRITICAL', () => {
+  const r = computeProductRisk({ ...RISK_THINKPAD, purchaseDate: '2020-08-10', overallConfidence: 0.3 }, RISK_REF, { fraudReport: RISK_NO_FLAGS });
+  assertEqual(r.riskLevel, 'CRITICAL', 'level CRITICAL');
+  assert(r.riskConfidence <= 0.5, 'low confidence visible in the report');
+});
+
+await test('Risk REGRESSION: full ThinkPad e2e input no longer scores ≥50', () => {
+  const r = computeProductRisk(RISK_THINKPAD, RISK_REF, { fraudReport: RISK_NO_FLAGS });
+  assert(r.riskScore < 50, `score ${r.riskScore} is honest (was inflated to 50/MEDIUM)`);
+  assertEqual(r.riskLevel, 'LOW', 'level LOW');
+  assert(r.riskFactors.length >= 5, 'all five factors reported');
+  assert(r.riskEvidence.length >= 5, 'evidence trail present');
+  assert(r.riskLastCalculatedAt, 'riskLastCalculatedAt timestamp set');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -650,6 +723,7 @@ await test('Fraud: placeholder invoice number (all zeros) → HIGH/FRAUDULENT', 
   };
   const r = analyzeInvoiceFraud(fakeInvoice, '');
   assert(r.fraudScore >= 40, 'elevated fraud score for placeholder invoice number');
+  assert(r.warningLevel !== 'FRAUDULENT', `placeholder numbers are strong suspicion, never confirmed fraud (got ${r.warningLevel})`);
 });
 
 await test('Fraud: duplicate invoice detection via seenInvoiceNumbers', () => {

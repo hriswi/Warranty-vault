@@ -3,6 +3,94 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Brain, ChevronDown, FileSearch, Lock, Radar, ShieldCheck, Sparkles, Zap } from 'lucide-react';
 import LightRays from '../components/ui/LightRays.jsx';
 
+// ── Safe custom cursor — StrictMode-safe, no useRef-null crashes, graceful fallback ──
+function CustomCursor() {
+  const dotRef = useRef(null);
+  const ringRef = useRef(null);
+  const supportsHover = typeof window !== 'undefined' &&
+    window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+  useEffect(() => {
+    if (!supportsHover) return undefined;
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
+
+    const dot = dotRef.current;
+    const ring = ringRef.current;
+    if (!dot || !ring) return undefined;
+
+    let mouseX = window.innerWidth / 2;
+    let mouseY = window.innerHeight / 2;
+    let ringX = mouseX;
+    let ringY = mouseY;
+    let rafId = 0;
+    let mounted = true;
+
+    const onMove = (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      try {
+        dot.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0)`;
+      } catch (_) { /* ignore */ }
+    };
+
+    const tick = () => {
+      if (!mounted) return;
+      ringX += (mouseX - ringX) * 0.18;
+      ringY += (mouseY - ringY) * 0.18;
+      try {
+        ring.style.transform = `translate3d(${ringX}px, ${ringY}px, 0)`;
+      } catch (_) { /* ignore */ }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    const onOver = (e) => {
+      const target = e.target;
+      try {
+        if (target && (
+          target.closest && (target.closest('button, a, [data-cursor], input, textarea, select, label') || target.onclick)
+        )) {
+          document.documentElement.classList.add('cursor-active');
+        }
+      } catch (_) { /* ignore */ }
+    };
+    const onOut = (e) => {
+      try {
+        const target = e.target;
+        if (target && target.closest && target.closest('button, a, [data-cursor], input, textarea, select, label')) {
+          document.documentElement.classList.remove('cursor-active');
+        }
+      } catch (_) { /* ignore */ }
+    };
+
+    try {
+      window.addEventListener('mousemove', onMove, { passive: true });
+      document.addEventListener('mouseover', onOver, { passive: true });
+      document.addEventListener('mouseout', onOut, { passive: true });
+      rafId = requestAnimationFrame(tick);
+      document.documentElement.classList.add('has-custom-cursor');
+    } catch (_) { /* ignore */ }
+
+    return () => {
+      mounted = false;
+      try {
+        if (rafId) cancelAnimationFrame(rafId);
+        window.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseover', onOver);
+        document.removeEventListener('mouseout', onOut);
+        document.documentElement.classList.remove('has-custom-cursor', 'cursor-active');
+      } catch (_) { /* ignore */ }
+    };
+  }, [supportsHover]);
+
+  if (!supportsHover) return null;
+  return (
+    <>
+      <div ref={dotRef} className="site-cursor-dot" />
+      <div ref={ringRef} className="site-cursor-ring" />
+    </>
+  );
+}
+
 const features = [
   ['01', Brain, 'Reasoning, not matching', 'Coverage, exclusions, product age, risk signals, and claim context considered together.'],
   ['02', FileSearch, 'Invoice to intelligence', 'Clean, structured product data from a scan, photo, or PDF — with confidence where it matters.'],
@@ -48,7 +136,7 @@ function Pipeline() { const ref = useReveal(); return <section className="sectio
 
 function Features() { const ref = useReveal(); return <section className="section"><div ref={ref} className="landing-shell reveal"><div className="section-heading"><div><p className="eyebrow">PRODUCT CAPABILITIES</p><h2>Built for the moments<br/>that need an answer.</h2></div></div><div className="feature-grid">{features.map(([number, Icon, title, text]) => <article className="feature-card" data-cursor key={number}><div className="feature-card-top"><span>{number}</span><Icon size={20}/></div><h3>{title}</h3><p>{text}</p><ArrowRight className="feature-arrow" size={17}/></article>)}</div></div></section>; }
 
-function Reasoning() { const ref = useReveal(); return <section className="section reasoning-section"><div ref={ref} className="landing-shell reveal reasoning-grid"><div><p className="eyebrow">EXPLAINABLE REASONING</p><h2>Answers should<br/>show their work.</h2><p className="section-copy">Rather than giving you a black-box verdict, the system connects the evidence, policy conditions, and risk factors behind every recommendation.</p></div><div className="reasoning-panel"><div><small>CLAIM ASSESSMENT</small><span className="status">COVERAGE LIKELY</span></div><div className="reason-row"><span>Invoice verified</span><b>Confirmed</b></div><div className="reason-row"><span>Warranty window</span><b>Active · 184 days</b></div><div className="reason-row"><span>Damage exclusion</span><b>Not indicated</b></div><p>Recommendation: prepare a standard manufacturer claim with the original invoice.</p></div></div></section>; }
+function Reasoning() { const ref = useReveal(); return <section className="section reasoning-section"><div ref={ref} className="landing-shell reveal reasoning-grid"><div><p className="eyebrow">EXPLAINABLE REASONING</p><h2>Answers should<br/>show their work.</h2><p className="section-copy">Rather than giving you a black-box verdict, the system connects the evidence, policy conditions, and risk factors behind every recommendation.</p></div><div className="reasoning-panel"><div><small>CLAIM ASSESSMENT</small><span className="status">COVERAGE LIKELY</span></div><div className="reason-row"><span>Invoice integrity</span><b>Consistent — no flags</b></div><div className="reason-row"><span>Warranty window</span><b>Active · 184 days</b></div><div className="reason-row"><span>Damage exclusion</span><b>Not indicated</b></div><p>Recommendation: prepare a standard manufacturer claim with the original invoice.</p></div></div></section>; }
 
 function Analytics() { const ref = useReveal(); return <section className="section analytics-section"><div ref={ref} className="landing-shell reveal"><div className="analytics-header"><p className="eyebrow">RISK &amp; INTEGRITY</p><h2>See what deserves<br/>your attention.</h2></div><div className="analytics-grid"><div className="metric"><span>EXPIRING SOON</span><strong>03</strong><p>Coverage windows closing in the next 30 days.</p></div><div className="metric"><span>CLAIM READINESS</span><strong>94<span>%</span></strong><p>Records have the evidence needed for a decision.</p></div><div className="metric"><span>INTEGRITY SIGNALS</span><strong>02</strong><p>Invoices worth a closer look before a claim.</p></div></div></div></section>; }
 
@@ -60,4 +148,4 @@ function CTA() { const ref = useReveal(); return <section className="final-cta">
 
 function Footer() { return <footer className="landing-footer"><div className="landing-shell"><span className="brand">WARRANTY VAULT</span><span>Autonomous warranty intelligence</span><span>© {new Date().getFullYear()}</span></div></footer>; }
 
-export default function LandingPage() { return <main className="landing-page"><Nav/><Hero/><Intro/><Pipeline/><Features/><Reasoning/><Analytics/><HowItWorks/><Security/><CTA/><Footer/></main>; }
+export default function LandingPage() { return <main className="landing-page"><CustomCursor/><Nav/><Hero/><Intro/><Pipeline/><Features/><Reasoning/><Analytics/><HowItWorks/><Security/><CTA/><Footer/></main>; }

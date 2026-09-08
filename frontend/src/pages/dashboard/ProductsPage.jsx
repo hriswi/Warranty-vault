@@ -8,18 +8,8 @@ import {
   Package, ChevronRight, Clock, AlertTriangle, TrendingUp, Shield,
 } from 'lucide-react';
 import { useStore } from '../../store/store.js';
-import { differenceInDays } from 'date-fns';
-
-function getWarrantyStatus(product) {
-  if (!product.purchaseDate || !product.warrantyMonths) return { status: 'unknown', days: null, expiry: null };
-  const purchase = new Date(product.purchaseDate);
-  const expiry = new Date(purchase);
-  expiry.setMonth(expiry.getMonth() + product.warrantyMonths);
-  const days = differenceInDays(expiry, new Date());
-  if (days < 0) return { status: 'expired', days: Math.abs(days), expiry };
-  if (days <= 30) return { status: 'expiring', days, expiry };
-  return { status: 'active', days, expiry };
-}
+import { getWarrantyTimeline } from '../../lib/warrantyStatus.js';
+import { riskLevelFor } from '../../lib/engine/ai-engine/riskClassification.js';
 
 const STATUS_STYLES = {
   active:   { label: 'Active',   color: 'rgba(255,255,255,0.5)' },
@@ -29,7 +19,7 @@ const STATUS_STYLES = {
 };
 
 function ProductCard({ product }) {
-  const ws = getWarrantyStatus(product);
+  const ws = getWarrantyTimeline(product);
   const st = STATUS_STYLES[ws.status];
 
   return (
@@ -77,7 +67,7 @@ function ProductCard({ product }) {
 }
 
 function ProductTableRow({ product }) {
-  const ws = getWarrantyStatus(product);
+  const ws = getWarrantyTimeline(product);
   const st = STATUS_STYLES[ws.status];
 
   return (
@@ -126,11 +116,11 @@ export default function ProductsPage() {
     // Filter
     if (dashboardFilter !== 'all') {
       list = list.filter((p) => {
-        const ws = getWarrantyStatus(p);
+        const ws = getWarrantyTimeline(p);
         if (dashboardFilter === 'active')   return ws.status === 'active';
         if (dashboardFilter === 'expired')  return ws.status === 'expired';
         if (dashboardFilter === 'expiring') return ws.status === 'expiring';
-        if (dashboardFilter === 'high_risk') return (p.riskScore || 0) >= 65;
+        if (dashboardFilter === 'high_risk') return ['HIGH', 'CRITICAL'].includes(riskLevelFor(p.riskScore));
         return true;
       });
     }
@@ -138,7 +128,7 @@ export default function ProductsPage() {
     // Sort
     list.sort((a, b) => {
       if (dashboardSort === 'expiry') {
-        const wa = getWarrantyStatus(a); const wb = getWarrantyStatus(b);
+        const wa = getWarrantyTimeline(a); const wb = getWarrantyTimeline(b);
         return (wa.days ?? 9999) - (wb.days ?? 9999);
       }
       if (dashboardSort === 'risk') return (b.riskScore || 0) - (a.riskScore || 0);

@@ -252,6 +252,29 @@ export function addMonths(date, months) {
 }
 
 /**
+ * Warranty end date: purchase date + warranty term in months.
+ *
+ * Month-end safe (Jan 31 + 1 month -> Feb 28/29) and returned as a
+ * LOCAL-midnight Date so toISODateOnly never shifts the day via UTC
+ * conversion. This is the single warranty-end computation used by the
+ * risk engine, advisor, eligibility engine, knowledge graph and UI.
+ */
+export function warrantyEndDate(purchaseDate, warrantyMonths) {
+  if (!purchaseDate || !warrantyMonths) return null;
+  const purchase = typeof purchaseDate === 'string' ? new Date(purchaseDate) : purchaseDate;
+  if (!(purchase instanceof Date) || Number.isNaN(purchase.getTime())) return null;
+  return addMonths(purchase, warrantyMonths);
+}
+
+/**
+ * Warranty end date as a local-time 'YYYY-MM-DD' string (canonical format).
+ */
+export function warrantyEndIso(purchaseDate, warrantyMonths) {
+  const end = warrantyEndDate(purchaseDate, warrantyMonths);
+  return end ? toISODateOnly(end) : null;
+}
+
+/**
  * Whole-day difference between two dates (b - a), ignoring time-of-day.
  */
 export function daysBetween(a, b) {
@@ -282,4 +305,6 @@ export default {
   addMonths,
   daysBetween,
   isPlausiblePurchaseDate,
+  warrantyEndDate,
+  warrantyEndIso,
 };

@@ -1,0 +1,22 @@
+TECHNOHUB ELECTRONICS
+42 Commerce Street, Austin, TX 78701
+Phone: (512) 555-0148
+
+INVOICE
+Invoice number: INV-2026-0912
+Invoice date: 2026-08-10
+Payment status: Paid in full
+
+Bill to:
+Ms. Sarah Chen
+789 Hillcrest Drive, Dallas, TX 75204
+
+Item: Lenovo ThinkPad E14 Gen 5 Laptop
+Serial number: LEN26104417
+Quantity: 1
+Unit price: $1,149.00
+Subtotal: $1,149.00
+Tax: $91.92
+Total: $1,240.92
+
+Warranty: 24 months from date of purchase
