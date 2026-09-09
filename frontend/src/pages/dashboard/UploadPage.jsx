@@ -645,7 +645,7 @@ export default function UploadPage() {
                   </p>
                   <p className="text-white/25 text-[11px]">{stage}</p>
                   <p className="text-white/25 text-[11px]">
-                    {aiSource === 'ai' ? 'Extracted with local AI.' : 'Extracted with offline engine.'}
+                    {aiSource === 'ai' ? 'Extracted with hosted AI.' : 'Extracted with on-device warranty engine.'}
                     {aiSource === 'ai' && extracted?.currency ? ` · Currency: ${extracted.currency}` : ''}
                   </p>
                 </div>
@@ -689,7 +689,12 @@ export default function UploadPage() {
               <div className="flex items-center gap-2 px-3 py-2 rounded-[6px]"
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <Info size={13} className="text-white/50 shrink-0" />
-                <p className="text-white/50 text-xs">Invoice flagged: {fraudWarning}</p>
+                <div>
+                  <p className="text-white/65 text-xs">Invoice flagged: {fraudWarning}</p>
+                  <p className="text-white/35 text-[11px] mt-1 leading-relaxed">
+                    {pipelineResult?.fraud?.signals?.[0]?.detail || 'The invoice contains a pattern that needs review. This is a warning, not proof of fraud.'}
+                  </p>
+                </div>
               </div>
             )}
           </div>
