@@ -53,6 +53,14 @@ const DEFAULT_TESSERACT_OPTIONS = {
 let workerPromise = null;
 let workerInitPromise = null;
 
+function withTimeout(promise, milliseconds, code, message) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new OcrError(code, message)), milliseconds); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 async function getWorker(lang = 'eng', onProgress) {
   if (!workerPromise) {
     if (!workerInitPromise) {
@@ -176,7 +184,7 @@ export async function extractTextFromImage(image, options = {}) {
 
   let worker;
   try {
-    worker = await getWorker(lang, onProgress);
+    worker = await withTimeout(getWorker(lang, onProgress), 45000, 'WORKER_INIT_TIMEOUT', 'OCR startup took too long. Check your connection and try again.');
   } catch (err) {
     throw new OcrError(
       'WORKER_INIT_FAILED',
@@ -195,7 +203,7 @@ export async function extractTextFromImage(image, options = {}) {
     if (onProgress) {
       onProgress({ stage: 'Reading invoice text…', progress: 0.55 });
     }
-    result = await worker.recognize(preparedImage);
+    result = await withTimeout(worker.recognize(preparedImage), 90000, 'RECOGNITION_TIMEOUT', 'OCR took too long. Try a clearer, smaller image or enter the details manually.');
   } catch (err) {
     throw new OcrError(
       'RECOGNITION_FAILED',
