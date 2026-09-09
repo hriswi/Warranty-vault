@@ -202,6 +202,7 @@ export default function AgentPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [backendStatus, setBackendStatus] = useState('checking'); // checking | ready | ai-offline | backend-offline
+  const [aiProvider, setAiProvider] = useState('local-qwen');
 
   const scrollRef = useRef(null);
   const nearBottomRef = useRef(true);
@@ -220,6 +221,7 @@ export default function AgentPage() {
     checkBackendHealth().then((h) => {
       if (cancelled) return;
       setBackendStatus(h.state || 'backend-offline');
+      setAiProvider(h.provider || 'local-qwen');
     });
     return () => { cancelled = true; };
   }, []);
@@ -352,6 +354,7 @@ export default function AgentPage() {
     setInput('');
     checkBackendHealth().then((h) => {
       setBackendStatus(h.state || 'backend-offline');
+      setAiProvider(h.provider || 'local-qwen');
     });
   };
 
@@ -360,10 +363,11 @@ export default function AgentPage() {
     sendQuery(input);
   };
 
+  const isHostedAi = aiProvider === 'cloudflare-workers-ai';
   const statusLabel = backendStatus === 'ready'
-    ? 'Local AI ready'
+    ? (isHostedAi ? 'Hosted AI ready' : 'Local AI ready')
     : backendStatus === 'ai-offline'
-    ? 'Local AI offline'
+    ? (isHostedAi ? 'Hosted AI offline' : 'Local AI offline')
     : backendStatus === 'backend-offline'
     ? 'AI bridge offline'
     : 'Checking…';
@@ -501,10 +505,16 @@ export default function AgentPage() {
           </form>
           <p className="text-white/15 text-[11px] mt-2 text-center font-mono">
             {backendStatus === 'ai-offline'
-              ? 'Qwen is not responding on 127.0.0.1:8080 — start it with C:\AI\start-qwen.bat to chat.'
+              ? (isHostedAi
+                ? 'Hosted AI is temporarily unavailable — try again in a moment.'
+                : 'Qwen is not responding on 127.0.0.1:8080 — start it with C:\\AI\\start-qwen.bat to chat.')
               : backendStatus === 'backend-offline'
-              ? 'AI bridge unreachable — start it with `cd backend && npm start`.'
-              : 'Local AI via Qwen · All data stays on your device'}
+              ? (isHostedAi
+                ? 'Cannot reach the hosted AI service — check your connection and try again.'
+                : 'AI bridge unreachable — start it with `cd backend && npm start`.')
+              : (isHostedAi
+                ? 'Hosted AI · Sign-in required · Live web lookup for specs & recalls'
+                : 'Local AI via Qwen · All data stays on your device')}
           </p>
         </div>
       </div>

@@ -7,4 +7,4 @@ binding = "AI"
 
 [vars]
 # Replace this with your final Vercel domain(s) before deployment.
-ALLOWED_ORIGINS = "https://frontend-i4zhmuykl-hriswisuvarna-2657s-projects.vercel.app,https://frontend-82lak0qtz-prasanth4562-2281s-projects.vercel.app,http://localhost:5173"
+ALLOWED_ORIGINS = "https://frontend-three-pearl-73.vercel.app,https://frontend-i4zhmuykl-hriswisuvarna-2657s-projects.vercel.app,https://frontend-82lak0qtz-prasanth4562-2281s-projects.vercel.app,http://localhost:5173"

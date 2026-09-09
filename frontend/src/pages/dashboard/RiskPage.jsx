@@ -12,7 +12,7 @@ function RiskBar({ score }) {
   return (
     <div className="flex items-center gap-3">
       <div className="flex-1 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
-        <div style={{ width: `${score || 0}%`, height: '100%', background: RISK_COLOR(score), borderRadius: '2px', transition: 'width 800ms ease' }} />
+        <div style={{ width: `${score || 0}%`, height: '100%', background: riskColorFor(score), borderRadius: '2px', transition: 'width 800ms ease' }} />
       </div>
       <span className="text-xs font-mono w-8 text-right shrink-0" style={{ color: riskColorFor(score) }}>{score ?? '—'}</span>
     </div>

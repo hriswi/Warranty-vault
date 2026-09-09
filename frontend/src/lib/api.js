@@ -13,7 +13,8 @@
 
 import { auth } from './firebase.js';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const hostedDefault = 'https://warranty-vault-ai.warranty-vault-cloudflare-ai.workers.dev';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || (location.hostname === 'localhost' ? 'http://localhost:3000' : hostedDefault)).replace(/\/+$/, '');
 
 async function apiHeaders(extra = {}) {
   const token = await auth.currentUser?.getIdToken();

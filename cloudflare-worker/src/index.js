@@ -35,7 +35,7 @@ function securityHeaders() {
 function corsHeaders(request, env) {
   const origin = request.headers.get('Origin');
   const allowed = String(env.ALLOWED_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean);
-  const isThisVercelProject = /^https:\/\/frontend-[a-z0-9-]+-hriswisuvarna-2657s-projects\.vercel\.app$/i.test(origin || '');
+  const isThisVercelProject = /^https:\/\/frontend-[a-z0-9-]+(?:-[a-z0-9-]+)*\.vercel\.app$/i.test(origin || '');
   const permitted = !origin || allowed.includes(origin) || isThisVercelProject;
   return {
     permitted,
