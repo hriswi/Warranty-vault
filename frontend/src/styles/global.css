@@ -52,6 +52,13 @@
   --border-strong:      1px solid rgba(0,0,0,0.2);
 }
 
+/* Most dashboard panels use intentional inline dark palette values. Invert the
+   complete application surface so light mode is genuinely distinct and every
+   page stays readable without leaving dark inline panels behind. */
+.light body, .light #root { background: #f5f7fb !important; color: #101828 !important; }
+.light #root { filter: invert(1) hue-rotate(180deg); }
+.light img, .light video, .light canvas { filter: invert(1) hue-rotate(180deg); }
+
 /* ── Base ─────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
