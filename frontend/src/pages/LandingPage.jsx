@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Brain, ChevronDown, FileSearch, Lock, Radar, ShieldCheck, Sparkles, Zap } from 'lucide-react';
+import { ArrowRight, Brain, ChevronDown, FileSearch, Lock, Radar, ShieldCheck, Zap } from 'lucide-react';
 import LightRays from '../components/ui/LightRays.jsx';
 
 // ── Safe custom cursor — StrictMode-safe, no useRef-null crashes, graceful fallback ──
@@ -142,9 +142,9 @@ function Analytics() { const ref = useReveal(); return <section className="secti
 
 function HowItWorks() { const ref = useReveal(); return <section className="section"><div ref={ref} className="landing-shell reveal work-grid"><div><p className="eyebrow">HOW IT WORKS</p><h2>Quietly useful<br/>from day one.</h2></div><ol>{steps.map(([number, title, text]) => <li key={number}><span>{number}</span><div><h3>{title}</h3><p>{text}</p></div></li>)}</ol></div></section>; }
 
-function Security() { const ref = useReveal(); return <section className="section security-section"><div ref={ref} className="landing-shell reveal security-grid"><div><p className="eyebrow">SECURITY BY DESIGN</p><h2>Your data remains<br/>yours.</h2></div><div><Lock size={20}/><p>Designed around protected accounts, strict data access rules, and local-first intelligence. Your warranty record should be useful without becoming another privacy trade-off.</p><div className="security-notes"><span>Protected access</span><span>Scoped data rules</span><span>Secure file checks</span></div></div></div></section>; }
+function Security() { const ref = useReveal(); return <section className="section security-section"><div ref={ref} className="landing-shell reveal security-grid"><div><p className="eyebrow">SECURITY BY DESIGN</p><h2>Your data remains<br/>yours.</h2></div><div><Lock size={20}/><p>Upload invoices, review extracted details, and track warranty coverage with protected account access.</p><div className="security-notes"><span>Protected access</span><span>Scoped data rules</span><span>Secure file checks</span></div></div></div></section>; }
 
-function CTA() { const ref = useReveal(); return <section className="final-cta"><div ref={ref} className="landing-shell reveal"><Sparkles size={18}/><p className="eyebrow">READY WHEN YOU ARE</p><h2>Put every warranty<br/>to work.</h2><Link to="/register" className="primary-button">Create your account <ArrowRight size={16}/></Link></div></section>; }
+function CTA() { const ref = useReveal(); return <section className="final-cta"><div ref={ref} className="landing-shell reveal"><p className="eyebrow">READY WHEN YOU ARE</p><h2>Put every warranty<br/>to work.</h2><Link to="/register" className="primary-button">Create your account <ArrowRight size={16}/></Link></div></section>; }
 
 function Footer() { return <footer className="landing-footer"><div className="landing-shell"><span className="brand">WARRANTY VAULT</span><span>Autonomous warranty intelligence</span><span>© {new Date().getFullYear()}</span></div></footer>; }
 

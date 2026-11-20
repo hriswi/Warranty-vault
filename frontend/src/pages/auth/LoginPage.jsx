@@ -111,7 +111,7 @@ export default function LoginPage() {
             <span className="text-white/35">Understood.</span>
           </h2>
         </div>
-        <p className="text-white/20 text-xs font-mono">v2.0 · Local-first · Free</p>
+        <p className="text-white/20 text-xs font-mono">Warranty tracking · Invoice analysis</p>
       </div>
 
       {/* Right panel — form */}

@@ -128,21 +128,20 @@ export default function RegisterPage() {
         </Link>
         <div>
           <p className="text-white/20 text-xs font-mono tracking-[0.15em] uppercase mb-4">
-            Free forever
+            Warranty tracking
           </p>
           <h2
             className="font-equinox text-white leading-none"
             style={{ fontSize: '3.5rem', letterSpacing: '0.02em' }}
           >
-            Start tracking.<br />
-            <span className="text-white/35">No cost.</span>
+            Track every warranty.<br />
+            <span className="text-white/35">Stay organized.</span>
           </h2>
           <p className="text-white/25 text-sm mt-6 max-w-xs leading-relaxed">
-            Upload invoices, get instant AI analysis, track every warranty.
-            Zero cost, local-first intelligence.
+            Upload invoices, review extracted details, and track warranty coverage.
           </p>
         </div>
-        <p className="text-white/20 text-xs font-mono">v2.0 · Firebase Hosting · Free tier</p>
+        <p className="text-white/20 text-xs font-mono">Warranty tracking · Invoice analysis</p>
       </div>
 
       {/* Right panel */}
@@ -156,7 +155,7 @@ export default function RegisterPage() {
             <h1 className="font-equinox text-white mb-2" style={{ fontSize: '2rem', letterSpacing: '0.04em' }}>
               Create account
             </h1>
-            <p className="text-white/35 text-sm">Free to use. No credit card required.</p>
+            <p className="text-white/35 text-sm">Create an account to save products and track warranty coverage.</p>
           </div>
 
           {/* Google */}
