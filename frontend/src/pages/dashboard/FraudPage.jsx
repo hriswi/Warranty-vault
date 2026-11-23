@@ -6,30 +6,14 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle, Package, ChevronRight, ShieldOff } from 'lucide-react';
 import { useStore } from '../../store/store.js';
 
+import { invoiceIssue } from '../../lib/invoiceIssue.js';
+
 const LEVEL_CONFIG = {
   CLEAN:       { label: 'Clean',       icon: CheckCircle,   color: 'rgba(255,255,255,0.3)' },
   SUSPICIOUS:  { label: 'Suspicious',  icon: AlertTriangle, color: 'rgba(255,255,255,0.6)' },
   HIGH_RISK:   { label: 'High Risk',   icon: AlertTriangle, color: 'rgba(255,255,255,0.8)' },
   FRAUDULENT:  { label: 'Fraudulent',  icon: ShieldOff,     color: 'rgba(255,255,255,0.95)' },
 };
-
-function SignalRow({ signal }) {
-  const sev = signal.severity >= 0.7 ? 'HIGH' : signal.severity >= 0.4 ? 'MEDIUM' : 'LOW';
-  return (
-    <div className="flex items-start gap-3 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-      <div className="w-1 h-1 rounded-full mt-2 shrink-0" style={{
-        background: sev === 'HIGH' ? 'rgba(255,255,255,0.7)' : sev === 'MEDIUM' ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)',
-      }} />
-      <div className="flex-1">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-white/60 text-xs font-mono tracking-[0.08em]">{signal.type?.replace(/_/g, ' ')}</span>
-          <span className="text-[10px] text-white/30">{sev}</span>
-        </div>
-        <p className="text-white/35 text-xs leading-relaxed">{signal.detail}</p>
-      </div>
-    </div>
-  );
-}
 
 function FraudCard({ product }) {
   const level = product.fraudWarning || 'CLEAN';
@@ -56,29 +40,7 @@ function FraudCard({ product }) {
         </div>
       </div>
 
-      {/* Fraud score bar */}
-      {product.fraudScore != null && (
-        <div className="flex items-center gap-3">
-          <span className="text-white/25 text-xs w-24">Fraud score</span>
-          <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.07)' }}>
-            <div style={{
-              width: `${product.fraudScore}%`, height: '1px',
-              background: cfg.color, transition: 'width 600ms ease',
-            }} />
-          </div>
-          <span className="text-xs font-mono w-8 text-right" style={{ color: cfg.color }}>
-            {product.fraudScore}
-          </span>
-        </div>
-      )}
-
-      {/* Signals */}
-      {signals.length > 0 && (
-        <div>
-          <p className="text-white/20 text-[10px] font-mono tracking-[0.15em] uppercase mb-2">Detected signals</p>
-          {signals.map((s, i) => <SignalRow key={i} signal={s} />)}
-        </div>
-      )}
+      <p className="text-white/60 text-sm">{invoiceIssue(product)}</p>
 
       {/* Link */}
       <Link
@@ -98,7 +60,7 @@ export default function FraudPage() {
     .filter((p) => p.fraudWarning && p.fraudWarning !== 'CLEAN')
     .sort((a, b) => (b.fraudScore || 0) - (a.fraudScore || 0));
 
-  const clean = products.filter((p) => !p.fraudWarning || p.fraudWarning === 'CLEAN');
+  const clean = products.filter((p) => p.fraudWarning === 'CLEAN');
 
   return (
     <div className="p-6 lg:p-8 max-w-4xl mx-auto page-enter">
@@ -111,8 +73,8 @@ export default function FraudPage() {
       <div className="grid grid-cols-3 gap-3 mb-8">
         {[
           { label: 'Flagged invoices',  value: flagged.length, color: flagged.length > 0 ? 'rgba(255,255,255,0.9)' : undefined },
-          { label: 'Clean invoices',    value: clean.length },
-          { label: 'Total analysed',    value: products.length },
+          { label: 'No flags',    value: clean.length },
+          { label: 'Total analysed',    value: flagged.length + clean.length },
         ].map(({ label, value, color }) => (
           <div key={label} className="data-card">
             <p className="text-2xl font-light mb-1" style={{ color: color || 'rgba(255,255,255,0.8)' }}>{value}</p>
@@ -124,8 +86,8 @@ export default function FraudPage() {
       {flagged.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <CheckCircle size={28} className="text-white/20 mb-4" strokeWidth={1} />
-          <p className="text-white/40 text-sm mb-1">All invoices are clean</p>
-          <p className="text-white/20 text-xs">No fraud signals detected across {products.length} product{products.length !== 1 ? 's' : ''}.</p>
+          <p className="text-white/40 text-sm mb-1">{clean.length ? 'No flagged invoices' : 'No invoices checked yet'}</p>
+          <p className="text-white/20 text-xs">Scan a purchase invoice to check its details.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-4">

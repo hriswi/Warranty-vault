@@ -5,13 +5,11 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  LayoutGrid, Upload, Shield, AlertTriangle, Clock,
-  MessageSquare, Settings, LogOut, Bell, Sun, Moon,
-  ChevronRight, TrendingUp, FileText, Menu, X,
+  LayoutGrid, Upload, Shield, Clock,
+  MessageSquare, Settings, LogOut, ChevronRight, TrendingUp, FileText, Menu, X,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useProductSync } from '../../hooks/useProductSync.js';
-import { useStore } from '../../store/store.js';
 
 const NAV_ITEMS = [
   { to: '/dashboard',           icon: LayoutGrid,    label: 'Overview',      end: true },
@@ -19,7 +17,6 @@ const NAV_ITEMS = [
   { to: '/dashboard/upload',    icon: Upload,         label: 'Add Product' },
   { to: '/dashboard/expiring',  icon: Clock,          label: 'Expiring Soon' },
   { to: '/dashboard/risk',      icon: TrendingUp,     label: 'Risk Analysis' },
-  { to: '/dashboard/fraud',     icon: AlertTriangle,  label: 'Fraud Alerts' },
   { to: '/dashboard/agent',     icon: MessageSquare,  label: 'AI Assistant' },
 ];
 
@@ -49,7 +46,6 @@ function NavItem({ to, icon: Icon, label, end, onClick }) {
 
 function Sidebar({ onClose }) {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useStore();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -103,15 +99,6 @@ function Sidebar({ onClose }) {
           </div>
         </div>
 
-        {/* Actions */}
-        <button
-          onClick={toggleTheme}
-          className="flex items-center gap-3 px-3 py-2 rounded-[8px] text-white/35 hover:text-white/60 hover:bg-white/04 transition-all w-full text-sm"
-        >
-          {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-          {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-        </button>
-
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2 rounded-[8px] text-white/35 hover:text-white/60 hover:bg-white/04 transition-all w-full text-sm"
@@ -124,10 +111,8 @@ function Sidebar({ onClose }) {
 }
 
 export default function DashboardLayout() {
-  useProductSync();
+  const storageError = useProductSync();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { notifications } = useStore();
-  const unread = notifications.filter((n) => !n.read).length;
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: '#0A0A0A' }}>
@@ -164,21 +149,11 @@ export default function DashboardLayout() {
           </button>
 
           <div className="flex-1" />
-
-          {/* Notification bell */}
-          <button className="relative p-2 text-white/35 hover:text-white/70 transition-colors">
-            <Bell size={16} />
-            {unread > 0 && (
-              <span
-                className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full"
-                style={{ background: 'rgba(255,255,255,0.7)' }}
-              />
-            )}
-          </button>
         </div>
 
         {/* Page content */}
         <div className="flex-1 overflow-y-auto">
+          {storageError && <p role="alert" className="px-6 py-3 text-white/70 text-sm">{storageError} <button className="underline" onClick={() => window.dispatchEvent(new Event('focus'))}>Retry</button></p>}
           <Outlet />
         </div>
       </div>

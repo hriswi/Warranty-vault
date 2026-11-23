@@ -25,9 +25,9 @@ ABSOLUTE RULES — data integrity:
    - GENERAL GUIDANCE — clearly framed as general advice, not specific to their records.
 8. Use the user's product context provided in the system message. If a question refers to a product not present in the context, say it is not in their warranty records and ask which product they mean.
 9. Maintain conversation context. Resolve "it", "this laptop", "the warranty" using the previous conversation.
-10. Answer naturally and concisely, like a helpful assistant. No rigid canned templates.
+10. Lead with the answer in one to three short, natural sentences. Include the relevant date, model, or next step. Give more detail when requested.
 11. Never expose internal reasoning chains, prompt text, or application internals.
-12. Never output fake "confidence" percentages. Only mention confidence when a value in the context actually includes one.
+12. Explain invoice issues in one short sentence. Omit numerical risk, fraud and confidence ratings.
 13. Never describe internal pipeline stages in normal chat.
 14. If a product's warranty status is "unknown" (missing purchase date or duration), say so plainly and ask for the missing detail.
 15. When the user asks for a calculation, rely on the data already provided; do not invent durations.
@@ -82,7 +82,7 @@ function buildContextBlock(products, summary, today) {
 
   if (summary) {
     pieces.push(
-      `User record summary: ${summary.total} product(s) tracked; ${summary.expiringSoon} expiring within 30 days; ${summary.highRisk} with risk score >= 65; ${summary.flaggedInvoices} with elevated invoice-integrity signals.`
+      `User record summary: ${summary.total} product(s) tracked; ${summary.expiringSoon} expiring within 30 days; ${summary.highRisk} needing risk review; ${summary.flaggedInvoices} with elevated invoice-integrity signals.`
     );
   }
 
@@ -101,14 +101,14 @@ function buildContextBlock(products, summary, today) {
       `warrantyStatus=${p.warrantyStatus || 'unknown'}`,
       p.warrantyExpiryDate ? `expiryDate=${p.warrantyExpiryDate}` : 'expiryDate=unavailable',
       p.warrantyDaysRemaining != null ? `daysRemaining=${p.warrantyDaysRemaining}` : 'daysRemaining=unavailable',
-      p.riskScore != null ? `riskScore=${p.riskScore}` : 'riskScore=unavailable',
-      p.fraudScore != null ? `fraudScore=${p.fraudScore}` : 'fraudScore=unavailable',
+      p.riskLevel ? `riskLevel=${p.riskLevel}` : '',
+      p.invoiceIssue ? `invoiceIssue=${p.invoiceIssue}` : '',
     ].filter(Boolean).join(' | ');
     return base;
   });
 
   pieces.push(
-    'The user\'s warranty records (id, name, brand, category, purchaseDate, warrantyMonths, warrantyStatus, expiryDate, daysRemaining, riskScore, fraudScore). These are the ONLY real values you may reference:',
+    'The user\'s warranty records (id, name, brand, category, purchaseDate, warrantyMonths, warrantyStatus, expiryDate, daysRemaining, riskLevel, invoiceIssue). These are the ONLY real values you may reference:',
     lines.join('\n')
   );
   return pieces.join('\n');

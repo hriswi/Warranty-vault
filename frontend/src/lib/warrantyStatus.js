@@ -28,7 +28,11 @@ import { addMonths, daysBetween, toISODateOnly } from './engine/utils/dateUtils.
  * }
  */
 export function getWarrantyTimeline(product, referenceDate = new Date()) {
-  if (!product || !product.purchaseDate || !product.warrantyMonths) {
+  const date = product?.warrantyStartDate || product?.purchaseDate;
+  const months = Number(product?.warrantyMonths);
+  const purchase = new Date(date + 'T00:00:00');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(purchase.getTime()) ||
+      toISODateOnly(purchase) !== date || !Number.isInteger(months) || months <= 0 || months > 240) {
     return {
       status: 'unknown',
       days: null,
@@ -43,8 +47,7 @@ export function getWarrantyTimeline(product, referenceDate = new Date()) {
     };
   }
 
-  const purchase = new Date(product.purchaseDate);
-  const expiry = addMonths(purchase, product.warrantyMonths);
+  const expiry = addMonths(purchase, months);
   const totalDays = daysBetween(purchase, expiry);
   const daysUsed = Math.max(0, daysBetween(purchase, referenceDate));
   const daysRemaining = daysBetween(referenceDate, expiry);
@@ -67,7 +70,7 @@ export function getWarrantyTimeline(product, referenceDate = new Date()) {
     expiry,
     expiryIso: toISODateOnly(expiry),
     isExpired: daysRemaining < 0,
-    isExpiring: daysRemaining >= 0 && daysRemaining <= 90,
+    isExpiring: status === 'expiring',
   };
 }
 

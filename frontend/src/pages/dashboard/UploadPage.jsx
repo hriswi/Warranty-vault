@@ -1,64 +1,33 @@
 /**
  * UploadPage.jsx
- * 3MB hard limit enforced at: dropzone validator, onChange, pre-OCR, pre-Firebase.
+ * 500 KB hard limit enforced at: dropzone validator, onChange, pre-OCR, pre-Firebase.
  * Two-mode workflow: Upload Invoice (default) vs Enter Manually.
  */
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Upload, FileText, Image as ImageIcon, X, Check, ShieldCheck, Info,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useStore } from '../../store/store.js';
-import { db } from '../../lib/firebase.js';
-import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { saveInvoice, deleteInvoice } from '../../lib/localFileStore.js';
+import { invoiceIssue } from '../../lib/invoiceIssue.js';
+import { getInvoice } from '../../lib/localFileStore.js';
+import { readFile, saveProduct } from '../../lib/invoiceFiles.js';
 import {
   validateFile, validateFileSync, dropzoneValidator,
-  MAX_FILE_SIZE_LABEL, ALLOWED_FORMATS_LABEL, DROPZONE_ACCEPT,
+  MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_LABEL, ALLOWED_FORMATS_LABEL, DROPZONE_ACCEPT,
   formatBytes, fileSizePercent,
 } from '../../lib/fileValidation.js';
 import { isPdfFile } from '../../lib/engine/ocr/ocrEngine.js';
-import { mapInvoiceToFormFields, supplementMissingProductFields } from '../../lib/invoiceFormMapper.js';
+import { mapInvoiceToFormFields } from '../../lib/invoiceFormMapper.js';
 import { CATEGORIES } from '../../lib/engine/classifier/productDatabase.js';
-import CategorySelect from '../../components/ui/CategorySelect.jsx';
+
 import DatePicker from '../../components/ui/DatePicker.jsx';
-import { extractInvoiceWithQwen } from '../../lib/api.js';
+import { productPages, assessInvoice } from '../../lib/invoiceEvidence.js';
 
 const CATEGORY_LIST = Object.freeze(Object.values(CATEGORIES));
 
-// The 10 canonical extraction fields (mirror of backend EXTRACTION_KEYS).
-const EXTRACTED_FIELDS = Object.freeze([
-  'productName', 'brand', 'category', 'purchaseDate', 'warrantyMonths',
-  'invoiceNumber', 'serialNumber', 'seller', 'purchasePrice', 'currency',
-]);
-
-/** Maps a failed AI-extraction error to a clear, actionable UI message.
- *  Uses the backend's normalized `state` (AI_OFFLINE / AI_REQUEST_FAILED /
- *  AI_INVALID_RESPONSE) so the user is told the REAL problem, not a
- *  generic "offline". */
-function aiErrorMessage(err) {
-  const code = err?.code || '';
-  const state = err?.state || '';
-  if (state === 'AI_OFFLINE' || code === 'QWEN_OFFLINE') {
-    return 'Local AI (Qwen) is not responding on 127.0.0.1:8080 — start it with C:\\AI\\start-qwen.bat, then retry. This upload used the offline engine.';
-  }
-  switch (code) {
-    case 'BACKEND_UNREACHABLE':
-      return 'Cannot reach the local AI bridge on http://localhost:3000 — start it with `cd backend && npm start`, then retry. This upload used the offline engine.';
-    case 'QWEN_TIMEOUT':
-      return 'Local AI timed out. Try again — this upload used the offline engine.';
-    case 'EXTRACTION_INVALID_RESPONSE':
-      return 'Local AI returned invalid data — this upload used the offline engine.';
-    case 'FORBIDDEN_ORIGIN':
-      return 'Local AI bridge rejected this browser origin. Restart the backend to accept the current frontend port.';
-    default:
-      return err?.message || 'AI extraction failed — this upload used the offline engine.';
-  }
-}
-
-/** Maps OCR engine stage names to user-facing progress copy. */
 function friendlyStage(raw, isPdf) {
   if (!raw) return isPdf ? 'Rendering PDF…' : 'Extracting text…';
   const s = raw.toLowerCase();
@@ -67,6 +36,14 @@ function friendlyStage(raw, isPdf) {
   if (s.includes('reading invoice') || s.includes('recognizing') || s.includes('preparing')) return 'Extracting text…';
   if (s.includes('loading') || s.includes('initializing') || s.includes('warming')) return 'Reading invoice…';
   return 'Extracting text…';
+}
+
+function friendlyPdfError(message) {
+  const raw = String(message || '');
+  if (!raw || /destroy is not a function|is not a function/i.test(raw)) {
+    return 'Could not read this PDF. Try uploading it again, or enter the details manually.';
+  }
+  return raw;
 }
 
 function Field({ label, required, confidence, missing, children }) {
@@ -149,40 +126,60 @@ function ModeTabs({ mode, setMode }) {
 }
 
 export default function UploadPage() {
+  const [params] = useSearchParams();
+  const id = params.get('edit');
+  const product = useStore(state => state.products.find(p => p.id === id));
+  if (id && !product) return <p className="p-8 text-white/50">Product details unavailable.</p>;
+  return <InvoiceForm key={id || 'new'} existing={product} />;
+}
+
+function InvoiceForm({ existing }) {
   const { user } = useAuth();
-  const { addProduct, addNotification } = useStore();
+  const { addNotification } = useStore();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState('invoice');
 
   const [file,           setFile]           = useState(null);
   const [preview,        setPreview]        = useState(null);
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
   const [processing,     setProcessing]     = useState(false);
   const [progress,       setProgress]       = useState(0);
   const [stage,          setStage]          = useState('');
   const [processed,      setProcessed]      = useState(false);
   const [extracted,      setExtracted]      = useState(null);
-  const [extractedCount, setExtractedCount] = useState(0);
   const [fieldConf,      setFieldConf]      = useState({});
   const [overallConf,    setOverallConf]    = useState(null);
   const [fraudWarning,   setFraudWarning]   = useState(null);
   const [pipelineResult, setPipelineResult] = useState(null);
   const [validationError,setValidationError]= useState('');
 
-  const [form, setForm] = useState({
-    productName:'', brand:'', category:'', purchaseDate:'',
-    warrantyMonths:'', invoiceNumber:'', serialNumber:'',
-    seller:'', price:'', notes:'',
-  });
+  const [form, setForm] = useState(() => Object.fromEntries(
+    ['productName', 'brand', 'category', 'purchaseDate', 'warrantyMonths', 'invoiceNumber',
+     'serialNumber', 'seller', 'price', 'notes', 'orderNumber', 'model', 'currency'].map(key => [key, String(existing?.[key] ?? '')])
+  ));
 
   const userEditedRef = useRef(new Set());
-  const rawTextRef = useRef('');
+  const reviewingOriginal = useRef(false);
 
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
   const [error,  setError]  = useState('');
-  const [aiNotice, setAiNotice] = useState('');
-  const [aiSource, setAiSource] = useState(null); // 'ai' | 'engine' | null
+  const busy = useRef(false);
+  const [choices,setChoices] = useState([]);
+  function chooseInvoice(inv) {
+    const patch = mapInvoiceToFormFields(inv, {allowedCategories:CATEGORY_LIST});
+    setForm(prev => {
+      const next = {...prev};
+      for (const key of ['productName','brand','model','category','currency','price','orderNumber','serialNumber','invoiceNumber','warrantyMonths','seller','purchaseDate']) {
+        if (!userEditedRef.current.has(key) && !(reviewingOriginal.current && prev[key])) next[key] = patch[key] ?? '';
+      }
+      return next;
+    });
+    setExtracted(inv); setProcessed(true); setChoices([]);
+    const assessment = assessInvoice(inv);
+    setStage([...assessment.issues,...assessment.notes].join(' ') || 'Review the extracted details.');
+  }
 
   const setField = (key) => (e) => {
     const value = e?.target?.value ?? '';
@@ -191,14 +188,15 @@ export default function UploadPage() {
   };
 
   const resetInvoiceState = useCallback(() => {
-    setFile(null); setPreview(null); setExtracted(null); setExtractedCount(0);
+    setFile(null); setPreview(null); setExtracted(null);
     setFieldConf({}); setOverallConf(null); setPipelineResult(null);
     setFraudWarning(null); setProcessed(false); setProcessing(false);
     setProgress(0); setStage(''); setValidationError('');
-    setAiNotice(''); setAiSource(null); rawTextRef.current = '';
+    setChoices([]);
   }, []);
 
   const switchMode = (nextMode) => {
+    if (processing || saving) return;
     setMode(nextMode);
     if (nextMode === 'manual') {
       resetInvoiceState();
@@ -227,8 +225,10 @@ export default function UploadPage() {
       return;
     }
 
+    if (busy.current) return;
+    reviewingOriginal.current = false;
     setFile(f);
-    setExtracted(null); setExtractedCount(0); setFieldConf({}); setOverallConf(null);
+    setExtracted(null); setFieldConf({}); setOverallConf(null);
     setFraudWarning(null); setPipelineResult(null); setProcessed(false);
     setProgress(0); setStage(''); setValidationError('');
 
@@ -237,25 +237,28 @@ export default function UploadPage() {
     } else {
       setPreview(null);
     }
+    await runOcrPipeline(f);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
     accept: DROPZONE_ACCEPT,
-    maxSize: 3 * 1024 * 1024,
+    maxSize: MAX_FILE_SIZE_BYTES,
+    disabled: processing || saving,
     maxFiles: 1,
     multiple: false,
     validator: dropzoneValidator,
   });
 
-  const runOcrPipeline = async () => {
-    if (!file) return;
+  const runOcrPipeline = async (file) => {
+    if (!file || busy.current) return;
     const guard = validateFileSync(file);
     if (!guard.valid) { setValidationError(guard.error); return; }
 
+    busy.current = true; setChoices([]);
     setProcessing(true); setProgress(0); setStage('');
     setError(''); setValidationError('');
-    setProcessed(false); setExtracted(null); setExtractedCount(0); setFieldConf({}); setOverallConf(null);
+    setProcessed(false); setExtracted(null); setFieldConf({}); setOverallConf(null);
     setPipelineResult(null); setFraudWarning(null);
 
     const isPdf = isPdfFile(file);
@@ -269,90 +272,18 @@ export default function UploadPage() {
       setStage(isPdf ? 'Rendering PDF…' : 'Reading invoice…'); setProgress(8);
 
       const ocrResult = await extractInvoiceText(file, {
-        lang: 'eng',
+        lang: 'eng', collectPages: true,
         onProgress: ({ stage: s, progress: p }) => {
           if (s) setStage(friendlyStage(s, isPdf));
           if (typeof p === 'number') setProgress(Math.min(55, 5 + Math.round(p * 50)));
         },
       });
 
-      const rawText = (ocrResult?.rawText || '').trim();
-      rawTextRef.current = rawText;
-      console.log(`[UploadPage] raw OCR text (${rawText.length} chars):\n${rawText}`);
-
-      if (!rawText || rawText.length < 5) {
-        setStage('Reading failed — fill in details manually.');
-        setValidationError('Could not extract readable text from this file. Please enter the information manually.');
-        setProgress(0); setProcessing(false);
-        return;
-      }
-
-      // ── Phase A: local AI (Qwen) field extraction ──
-      setStage('Understanding invoice…'); setProgress(58);
-      let aiInvoice = null;
-      let aiError = null;
-      try {
-        aiInvoice = await extractInvoiceWithQwen(rawText);
-      } catch (err) {
-        aiError = err;
-      }
-      setProgress(76);
-
-      // ── Phase B: deterministic engines (fraud/risk/confidence) ──
-      setStage('Extracting warranty details…'); setProgress(82);
-      const { processInvoiceText } = await import('../../lib/warrantyEngine.js');
-      const pipeline = await processInvoiceText(rawText, { referenceDate: new Date() });
-      setProgress(92);
-
-      let inv;
-      if (aiInvoice) {
-        inv = aiInvoice;
-      } else if (pipeline?.success) {
-        inv = pipeline.invoice || {};
-      } else {
-        setStage('Extracting failed — fill in details manually.');
-        setValidationError(pipeline?.error || 'Could not extract invoice data from this file.');
-        setProgress(0); setProcessing(false);
-        return;
-      }
-
-      // Deterministic signals always come from the local engine.
-      if (pipeline?.success) {
-        setFieldConf(pipeline.invoice?.fieldConfidence || {});
-        setOverallConf(pipeline.invoice?.overallConfidence ?? null);
-        setFraudWarning(pipeline?.fraud?.warningLevel ?? null);
-        setPipelineResult(pipeline);
-      } else {
-        setFieldConf({}); setOverallConf(null); setFraudWarning(null); setPipelineResult(null);
-      }
-
-      setExtracted(inv);
-      setAiSource(aiInvoice ? 'ai' : 'engine');
-      setAiNotice(aiError ? aiErrorMessage(aiError) : '');
-
-      // Honest coverage count: how many of the 10 canonical fields the
-      // extraction (+ deterministic supplement) actually produced.
-      const supplemented = supplementMissingProductFields(inv, rawText, CATEGORY_LIST);
-      setExtractedCount(EXTRACTED_FIELDS.filter((k) => {
-        const v = supplemented[k];
-        return v != null && String(v).trim() !== '';
-      }).length);
-
-      const formPatch = mapInvoiceToFormFields(inv, {
-        allowedCategories: CATEGORY_LIST,
-        userEditedFields: new Set(),
-        force: true,
-        rawText,
-      });
-
-      if (Object.keys(formPatch).length > 0) {
-        setForm((prev) => ({ ...prev, ...formPatch }));
-      }
-      userEditedRef.current = new Set();
-
+      const candidates = productPages(ocrResult.pageTexts || [ocrResult.rawText || '']);
+      if (!candidates.length) setValidationError('No product invoice identified. Review the product name, date, invoice number and price.');
+      else if (candidates.length > 1) setChoices(candidates);
+      else chooseInvoice(candidates[0]);
       setProgress(100);
-      setProcessed(true);
-      setStage('Ready — review extracted details.');
     } catch (err) {
       console.error('[OCR Pipeline] failed:', err);
       let userMsg = 'OCR processing failed. You can still fill in the details manually.';
@@ -360,7 +291,7 @@ export default function UploadPage() {
       if (err?.name === 'OcrError') {
         switch (err.code) {
           case 'PDF_LOAD_FAILED':
-            userMsg = `Could not read the PDF: ${err.message || 'The file may be corrupted or password-protected.'}`;
+            userMsg = friendlyPdfError(err.message) || 'Could not read this PDF. It may be corrupted or password-protected. You can enter the details manually.';
             stageMsg = 'Failed to read PDF.';
             break;
           case 'PDF_RENDER_FAILED':
@@ -389,68 +320,18 @@ export default function UploadPage() {
       setValidationError(userMsg);
       setProgress(0);
     } finally {
-      setProcessing(false);
+      busy.current = false; setProcessing(false);
     }
   };
 
-  /** Re-runs ONLY the AI extraction phase (OCR text is cached) — used after the
-   *  user starts the Qwen server. Preserves any fields the user edited. */
-  const rerunAiExtraction = async () => {
-    if (!rawTextRef.current) return;
-    setProcessing(true); setProgress(58);
-    setStage('Understanding invoice…');
-    setError(''); setValidationError(''); setAiNotice('');
-    setProcessed(false);
-    try {
-      const aiInvoice = await extractInvoiceWithQwen(rawTextRef.current);
-      setExtracted(aiInvoice);
-      setAiSource('ai');
-      const supplemented = supplementMissingProductFields(aiInvoice, rawTextRef.current, CATEGORY_LIST);
-      setExtractedCount(EXTRACTED_FIELDS.filter((k) => {
-        const v = supplemented[k];
-        return v != null && String(v).trim() !== '';
-      }).length);
-      const formPatch = mapInvoiceToFormFields(aiInvoice, {
-        allowedCategories: CATEGORY_LIST,
-        userEditedFields: userEditedRef.current,
-        force: false,
-        rawText: rawTextRef.current,
-      });
-      if (Object.keys(formPatch).length > 0) {
-        setForm((prev) => ({ ...prev, ...formPatch }));
-      }
-      setProgress(100); setProcessed(true);
-      setStage('Ready — review extracted details.');
-    } catch (err) {
-      setAiSource('engine');
-      setAiNotice(aiErrorMessage(err));
-      setProcessed(true);
-      setStage('Ready — review extracted details.');
-    } finally {
-      setProcessing(false);
-    }
-  };
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!form.productName) { setError('Product name is required.'); return; }
+    if (!form.productName.trim()) { setError('Product name is required.'); return; }
     setError(''); setSaving(true);
 
-    let productRef = null;
-    let savedLocalInvoice = false;
     try {
       if (!user) throw new Error('Sign in before saving a product.');
-      if (file) {
-        const guard = await validateFile(file);
-        if (!guard.valid) { setError(guard.error); return; }
-      }
-
-      productRef = doc(collection(db, 'products'));
-      if (file) {
-        await saveInvoice({ userId: user.uid, productId: productRef.id, file });
-        savedLocalInvoice = true;
-      }
-
       const productData = {
         userId:            user.uid,
         productName:       form.productName.trim(),
@@ -458,43 +339,47 @@ export default function UploadPage() {
         category:          form.category,
         purchaseDate:      form.purchaseDate,
         warrantyMonths:    form.warrantyMonths ? parseInt(form.warrantyMonths) : null,
+        model: form.model || null,
+        currency: form.currency || null,
+        orderNumber: form.orderNumber || null,
         invoiceNumber:     form.invoiceNumber.trim(),
         serialNumber:      form.serialNumber.trim(),
         seller:            form.seller.trim(),
         price:             form.price.trim(),
         notes:             form.notes.trim(),
-        invoiceStoredLocally: Boolean(file),
-        invoiceFilename: file?.name || null,
-        invoiceMimeType: file?.type || null,
-        invoiceSize: file?.size || null,
-        overallConfidence: overallConf,
-        fieldConfidence:   fieldConf,
-        fraudWarning:      pipelineResult?.fraud?.warningLevel ?? fraudWarning,
-        fraudScore:        pipelineResult?.fraud?.fraudScore ?? null,
-        fraudSignals:      pipelineResult?.fraud?.signals ?? [],
-        riskScore:         pipelineResult?.risk?.riskScore ?? null,
-        riskLevel:         pipelineResult?.risk?.riskLevel ?? null,
-        riskLevelLabel:    pipelineResult?.risk?.riskLevelLabel ?? null,
-        riskReason:        pipelineResult?.risk?.riskReason ?? null,
-        riskConfidence:    pipelineResult?.risk?.riskConfidence ?? null,
-        riskEvidence:      pipelineResult?.risk?.riskEvidence ?? [],
-        riskWarnings:      pipelineResult?.risk?.riskWarnings ?? [],
-        riskLastCalculatedAt: pipelineResult?.risk?.riskLastCalculatedAt ?? null,
-        riskRecommendation: pipelineResult?.risk?.recommendation ?? null,
-        risk:              pipelineResult?.risk ?? null,
-        fraud:             pipelineResult?.fraud ?? null,
-        advisory:          pipelineResult?.advisory ?? null,
-        createdAt:         serverTimestamp(),
-        updatedAt:         serverTimestamp(),
+        ...(extracted ? {invoiceEvidence: extracted, invoiceAssessment: assessInvoice(extracted), warrantyStartDate: extracted.warrantyStartDate || null} : {}),
+        ...(!existing || file ? {
+          ...(!extracted ? {invoiceEvidence:null, invoiceAssessment:null,warrantyStartDate:null} : {}),
+          invoiceInCloud: Boolean(file),
+          invoiceStoredLocally: false,
+          invoiceFilename: file?.name || null,
+          invoiceMimeType: file?.type || null,
+          invoiceSize: file?.size || null,
+          overallConfidence: overallConf,
+          fieldConfidence:   fieldConf,
+          fraudWarning:      pipelineResult?.fraud?.warningLevel ?? fraudWarning,
+          fraudScore:        pipelineResult?.fraud?.fraudScore ?? null,
+          fraudSignals:      pipelineResult?.fraud?.signals ?? [],
+          riskScore:         pipelineResult?.risk?.riskScore ?? null,
+          riskLevel:         pipelineResult?.risk?.riskLevel ?? null,
+          riskLevelLabel:    pipelineResult?.risk?.riskLevelLabel ?? null,
+          riskReason:        pipelineResult?.risk?.riskReason ?? null,
+          riskConfidence:    pipelineResult?.risk?.riskConfidence ?? null,
+          riskEvidence:      pipelineResult?.risk?.riskEvidence ?? [],
+          riskWarnings:      pipelineResult?.risk?.riskWarnings ?? [],
+          riskLastCalculatedAt: pipelineResult?.risk?.riskLastCalculatedAt ?? null,
+          riskRecommendation: pipelineResult?.risk?.recommendation ?? null,
+          risk:              pipelineResult?.risk ?? null,
+          fraud:             pipelineResult?.fraud ?? null,
+          advisory:          pipelineResult?.advisory ?? null,
+        } : {}),
       };
 
-      await setDoc(productRef, productData);
-      addProduct({ id: productRef.id, ...productData, createdAt: new Date().toISOString() });
-      addNotification({ type: 'success', message: `${form.productName} added.` });
+      const id = await saveProduct(existing?.id, productData, file);
+      addNotification({ type: 'success', message: existing ? 'Invoice updated.' : 'Product added.' });
       setSaved(true);
-      setTimeout(() => navigate(`/dashboard/products/${productRef.id}`), 1200);
+      navigate(`/dashboard/products/${id}`);
     } catch (err) {
-      if (savedLocalInvoice && productRef && user) await deleteInvoice(user.uid, productRef.id).catch(() => {});
       setError(err?.message || 'Failed to save. Check your connection and try again.');
     } finally {
       setSaving(false);
@@ -503,6 +388,7 @@ export default function UploadPage() {
 
   const clearFile = (e) => {
     if (e) e.stopPropagation();
+    if (processing || saving) return;
     resetInvoiceState();
   };
 
@@ -510,15 +396,23 @@ export default function UploadPage() {
     <div className="p-6 lg:p-8 max-w-5xl mx-auto page-enter">
       <div className="mb-6">
         <h1 className="font-equinox text-white mb-2" style={{ fontSize: '1.8rem', letterSpacing: '0.04em' }}>
-          Add product
+          {existing ? 'Update current invoice' : 'Add product'}
         </h1>
         <p className="text-white/35 text-sm">
           {mode === 'invoice'
-            ? 'Upload an invoice and the engine extracts every detail automatically.'
-            : 'Enter product information manually.'}
+            ? existing ? 'Edit the saved details or upload a replacement invoice.' : 'Upload an invoice and the engine extracts every detail automatically.'
+            : 'Manual entry skips the invoice scan. Risk and fraud checks require a scanned invoice.'}
         </p>
       </div>
 
+      {existing && mode === 'invoice' && !file && <button type="button" className="btn-ghost" disabled={processing} onClick={async () => {
+        try {
+          const original = existing.invoiceInCloud ? await readFile(existing.id,'purchase') : (await getInvoice(user.uid,existing.id))?.file;
+          if (!original) throw new Error('Original invoice unavailable. Upload it to check the purchase details.');
+          reviewingOriginal.current = true;
+          await runOcrPipeline(original);
+        } catch (err) { setValidationError(err.message); }
+      }}>Reanalyze original invoice</button>}
       <ModeTabs mode={mode} setMode={switchMode} />
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -587,11 +481,11 @@ export default function UploadPage() {
               </div>
             )}
 
-            {file && (
+            {file && !processed && (
               <button
                 type="button"
                 disabled={processing || !file}
-                onClick={runOcrPipeline}
+                onClick={() => runOcrPipeline(file)}
                 className="btn-primary w-full flex items-center justify-center gap-2"
                 style={{ opacity: processing ? 0.6 : 1 }}
               >
@@ -603,7 +497,7 @@ export default function UploadPage() {
                 ) : (
                   <>
                     <Check size={14} strokeWidth={2} />
-                    Done — Process Invoice
+                    Retry extraction
                   </>
                 )}
               </button>
@@ -639,40 +533,14 @@ export default function UploadPage() {
                 <Check size={13} className="text-white/50 shrink-0 mt-0.5" />
                 <div className="flex flex-col gap-1">
                   <p className="text-white/70 text-xs leading-relaxed">
-                    {extractedCount >= 10
-                      ? 'Invoice details extracted. Please review before saving.'
-                      : `Invoice processed — ${extractedCount}/10 fields extracted. Please review the highlighted fields.`}
+                    Review the extracted details before saving.
                   </p>
                   <p className="text-white/25 text-[11px]">{stage}</p>
-                  <p className="text-white/25 text-[11px]">
-                    {aiSource === 'ai' ? 'Extracted with hosted AI.' : 'Extracted with on-device warranty engine.'}
-                    {aiSource === 'ai' && extracted?.currency ? ` · Currency: ${extracted.currency}` : ''}
-                  </p>
                 </div>
               </div>
             )}
 
-            {aiNotice && (
-              <div
-                className="flex items-start gap-3 px-4 py-3 rounded-[8px]"
-                style={{ background: 'rgba(255,183,77,0.05)', border: '1px solid rgba(255,183,77,0.22)' }}
-              >
-                <Info size={14} className="text-amber-300/80 shrink-0 mt-0.5" />
-                <div className="flex flex-col gap-2 w-full">
-                  <p className="text-amber-200/80 text-xs leading-relaxed">{aiNotice}</p>
-                  {!processing && rawTextRef.current && (
-                    <button
-                      type="button"
-                      onClick={rerunAiExtraction}
-                      className="text-[11px] w-fit px-2 py-1 rounded-[4px] font-medium"
-                      style={{ background: 'rgba(255,183,77,0.12)', color: 'rgba(255,220,160,0.9)' }}
-                    >
-                      Retry with local AI
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
+            {choices.length > 0 && <div className="data-card"><p>Choose the purchased product</p>{choices.map((inv,i)=><button type="button" key={i} className="btn-ghost" onClick={()=>chooseInvoice(inv)}>Page {inv.pageNumber} · {inv.productName || inv.invoiceNumber || "Review invoice"}</button>)}</div>}
 
             <div
               className="flex items-start gap-3 px-4 py-3 rounded-[8px]"
@@ -681,7 +549,7 @@ export default function UploadPage() {
               <ShieldCheck size={13} className="text-white/25 shrink-0 mt-0.5" />
               <p className="text-white/25 text-[11px] leading-relaxed">
                 Files are validated for size, type, and content signature before processing.
-                Original invoice files stay on this browser only; they are not stored in the cloud. Max {MAX_FILE_SIZE_LABEL}.
+                Invoices are saved privately to your account. Max {MAX_FILE_SIZE_LABEL}.
               </p>
             </div>
 
@@ -690,9 +558,9 @@ export default function UploadPage() {
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <Info size={13} className="text-white/50 shrink-0" />
                 <div>
-                  <p className="text-white/65 text-xs">Invoice flagged: {fraudWarning}</p>
+                  <p className="text-white/65 text-xs">Check this invoice</p>
                   <p className="text-white/35 text-[11px] mt-1 leading-relaxed">
-                    {pipelineResult?.fraud?.signals?.[0]?.detail || 'The invoice contains a pattern that needs review. This is a warning, not proof of fraud.'}
+                    {invoiceIssue({ fraud: pipelineResult?.fraud, fraudWarning })}
                   </p>
                 </div>
               </div>
@@ -709,16 +577,6 @@ export default function UploadPage() {
             <Field label="Brand" confidence={fieldConf.brand} missing={processed && !form.brand}>
               <input type="text" value={form.brand} onChange={setField('brand')} placeholder="e.g. Sony" className="input-field" />
             </Field>
-            <Field label="Category" confidence={fieldConf.category} missing={processed && !form.category}>
-              <CategorySelect
-                value={form.category}
-                options={CATEGORY_LIST}
-                onChange={(category) => {
-                  userEditedRef.current.add('category');
-                  setForm((p) => ({ ...p, category }));
-                }}
-              />
-            </Field>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -731,8 +589,8 @@ export default function UploadPage() {
                 }}
               />
             </Field>
-            <Field label="Warranty (months)" confidence={fieldConf.warrantyMonths} missing={processed && !form.warrantyMonths}>
-              <input type="number" value={form.warrantyMonths} onChange={setField('warrantyMonths')} placeholder="12" min="1" max="240" className="input-field" />
+            <Field label="Warranty (months)" confidence={fieldConf.warrantyMonths} missing={false}>
+              <input type="number" value={form.warrantyMonths} onChange={setField('warrantyMonths')} placeholder="Enter confirmed months" min="1" max="240" className="input-field" />
             </Field>
           </div>
 
@@ -740,23 +598,17 @@ export default function UploadPage() {
             <Field label="Invoice number" confidence={fieldConf.invoiceNumber} missing={processed && !form.invoiceNumber}>
               <input type="text" value={form.invoiceNumber} onChange={setField('invoiceNumber')} placeholder="INV-001" className="input-field" />
             </Field>
-            <Field label="Serial number" confidence={fieldConf.serialNumber} missing={processed && !form.serialNumber}>
+            <Field label="Serial number / IMEI (optional)" confidence={fieldConf.serialNumber} missing={false}>
               <input type="text" value={form.serialNumber} onChange={setField('serialNumber')} placeholder="SN-XXXXXXXXX" className="input-field" />
             </Field>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Seller" confidence={fieldConf.seller} missing={processed && !form.seller}>
-              <input type="text" value={form.seller} onChange={setField('seller')} placeholder="e.g. Amazon" className="input-field" />
-            </Field>
             <Field label="Purchase price" confidence={fieldConf.purchasePrice} missing={processed && !form.price}>
               <input type="text" value={form.price} onChange={setField('price')} placeholder="₹ 0.00" className="input-field" />
             </Field>
           </div>
 
-          <Field label="Notes">
-            <textarea value={form.notes} onChange={setField('notes')} placeholder="Any additional notes…" rows={2} className="input-field resize-none" />
-          </Field>
 
           {error && (
             <p className="text-xs px-4 py-3 rounded-[8px]"
@@ -766,12 +618,12 @@ export default function UploadPage() {
           )}
 
           <div className="flex gap-3 pt-2">
-            <button type="submit" disabled={saving || saved || processing} className="btn-primary flex-1">
+            <button type="submit" disabled={saving || saved || processing || choices.length > 0} className="btn-primary flex-1">
               {saved   ? <><Check size={15} /> Saved</>
               : saving  ? <div className="w-4 h-4 border border-black/20 border-t-black/60 rounded-full animate-spin" />
-              : 'Save product'}
+              : existing ? 'Save changes' : 'Save product'}
             </button>
-            <button type="button" onClick={() => navigate('/dashboard')} className="btn-ghost px-5">
+            <button type="button" onClick={() => navigate(existing ? `/dashboard/products/${existing.id}` : '/dashboard')} className="btn-ghost px-5">
               Cancel
             </button>
           </div>
@@ -780,3 +632,4 @@ export default function UploadPage() {
     </div>
   );
 }
+

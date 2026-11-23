@@ -4,11 +4,8 @@
  * pdf.js-backed PDF page rasterizer for the OCR pipeline.
  * Runs entirely in the browser — no Node APIs, no backend.
  *
- * Vite wiring: the worker script is imported with the `?url` suffix so
- * Vite emits it as a static asset and gives us its URL. Assigning that
- * URL to GlobalWorkerOptions.workerSrc is the supported way to run
- * pdf.js with a bundled worker (importing the worker module directly
- * and assigning the module object breaks at runtime).
+ * pdf.js v6: PDFDocumentProxy has cleanup() but no destroy().
+ * Teardown belongs on PDFDocumentLoadingTask.destroy().
  */
 
 let pdfjsLibPromise = null;
@@ -16,16 +13,17 @@ let pdfjsLibPromise = null;
 async function loadPdfjs() {
   if (!pdfjsLibPromise) {
     pdfjsLibPromise = (async () => {
-      const pdfjs = await import('pdfjs-dist');
-      try {
-        const workerUrl = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
-        pdfjs.GlobalWorkerOptions.workerSrc = workerUrl.default;
-      } catch (_) {
-        // If the ?url import is unavailable, fall back to the package's
-        // own CDN mirror. Never pretend the worker loaded.
+      const mod = await import('pdfjs-dist');
+      const pdfjs = mod.default ?? mod;
+      const GlobalWorkerOptions = pdfjs.GlobalWorkerOptions ?? mod.GlobalWorkerOptions;
+      if (GlobalWorkerOptions && !GlobalWorkerOptions.workerSrc) {
         try {
-          pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-        } catch (__) { /* leave unset — getDocument will fail loudly */ }
+          const workerUrl = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
+          const src = typeof workerUrl === 'string' ? workerUrl : workerUrl?.default;
+          if (typeof src === 'string' && src) GlobalWorkerOptions.workerSrc = src;
+        } catch (_) {
+          // Node/tests: leave unset so pdf.js falls back to its fake worker.
+        }
       }
       return pdfjs;
     })();
@@ -33,12 +31,62 @@ async function loadPdfjs() {
   return pdfjsLibPromise;
 }
 
-export async function getPdfPageCount(pdfSource) {
+function getDocumentFn(pdfjs) {
+  const fn = pdfjs.getDocument ?? pdfjs.default?.getDocument;
+  if (typeof fn !== 'function') throw new Error('pdf.js getDocument is unavailable.');
+  return fn;
+}
+
+/**
+ * pdf.js v6 owns destruction on the loading task, not the document proxy.
+ * Calling destroy() on the proxy throws TypeError: destroy is not a function
+ * (minified in the browser as "i.destroy is not a function").
+ */
+export function resolvePdfDestroyTarget(loadingTask, doc) {
+  if (loadingTask && typeof loadingTask.destroy === 'function') return loadingTask;
+  if (doc?.loadingTask && typeof doc.loadingTask.destroy === 'function') return doc.loadingTask;
+  return null;
+}
+
+export async function closePdfDocument(loadingTask, doc) {
+  try {
+    if (typeof doc?.cleanup === 'function') await doc.cleanup();
+  } catch (_) { /* keep teardown going */ }
+  const target = resolvePdfDestroyTarget(loadingTask, doc);
+  if (!target) return;
+  try { await target.destroy(); } catch (_) { /* never fail the caller after a successful read */ }
+}
+
+async function openPdf(source) {
   const pdfjs = await loadPdfjs();
-  const data = await readSourceToArrayBuffer(pdfSource);
-  const doc = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
+  const data = await readSourceToArrayBuffer(source);
+  const loadingTask = getDocumentFn(pdfjs)({ data, useSystemFonts: true });
+  const doc = await loadingTask.promise;
+  return { loadingTask, doc };
+}
+
+export async function readPdfTextPages(source, limit) {
+  const { loadingTask, doc } = await openPdf(source);
+  try {
+    const pages = [];
+    for (let n = 1; n <= Math.min(limit, doc.numPages); n++) {
+      const page = await doc.getPage(n);
+      try {
+        const content = await page.getTextContent();
+        const text = content.items.map(item => (item.str || '') + (item.hasEOL ? '\n' : ' ')).join('');
+        pages.push(text);
+      } catch { pages.push(''); }
+    }
+    return { pages, count: doc.numPages };
+  } finally {
+    await closePdfDocument(loadingTask, doc);
+  }
+}
+
+export async function getPdfPageCount(pdfSource) {
+  const { loadingTask, doc } = await openPdf(pdfSource);
   const count = doc.numPages;
-  try { await doc.destroy(); } catch (_) { /* ignore */ }
+  await closePdfDocument(loadingTask, doc);
   return count;
 }
 
@@ -52,21 +100,9 @@ export async function getPdfPageCount(pdfSource) {
  * @returns {Promise<HTMLCanvasElement>}
  */
 export async function renderPdfPageToCanvas(pdfSource, pageNumber, scale = 2.5) {
-  const pdfjs = await loadPdfjs();
-  const data = await readSourceToArrayBuffer(pdfSource);
-
-  const loadingTask = pdfjs.getDocument({
-    data,
-    useSystemFonts: true,
-    isEvalSupported: false,
-  });
-
-  let doc = null;
-  let page = null;
+  const { loadingTask, doc } = await openPdf(pdfSource);
   try {
-    doc = await loadingTask.promise;
-    page = await doc.getPage(pageNumber);
-
+    const page = await doc.getPage(pageNumber);
     const viewport = page.getViewport({ scale });
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -74,6 +110,7 @@ export async function renderPdfPageToCanvas(pdfSource, pageNumber, scale = 2.5) 
     canvas.height = Math.ceil(viewport.height);
 
     await page.render({
+      canvas,
       canvasContext: ctx,
       viewport,
       background: 'rgba(255,255,255,1)',
@@ -81,8 +118,7 @@ export async function renderPdfPageToCanvas(pdfSource, pageNumber, scale = 2.5) 
 
     return canvas;
   } finally {
-    try { if (page) await page.cleanup(); } catch (_) { /* ignore */ }
-    try { if (doc) await doc.destroy(); } catch (_) { /* ignore */ }
+    await closePdfDocument(loadingTask, doc);
   }
 }
 
@@ -99,4 +135,7 @@ export default {
   loadPdfjs,
   getPdfPageCount,
   renderPdfPageToCanvas,
+  readPdfTextPages,
+  resolvePdfDestroyTarget,
+  closePdfDocument,
 };

@@ -8,7 +8,7 @@ import { useStore } from '../../store/store.js';
 import { getWarrantyTimeline } from '../../lib/warrantyStatus.js';
 
 function UrgencyBadge({ days }) {
-  if (days <= 0)  return <span className="badge badge-critical">Expired</span>;
+  if (days < 0)  return <span className="badge badge-critical">Expired</span>;
   if (days <= 7)  return <span className="badge badge-critical">{days}d left</span>;
   if (days <= 30) return <span className="badge badge-high">{days}d left</span>;
   return <span className="badge badge-medium">{days}d left</span>;
@@ -59,7 +59,7 @@ export default function ExpiringPage() {
   const expiring = useMemo(() => {
     return products
       .map((p) => ({ product: p, ws: getWarrantyTimeline(p) }))
-      .filter(({ ws }) => ws && !ws.isExpired && ws.days <= window)
+      .filter(({ ws }) => ws.expiry && Number.isFinite(ws.daysRemaining) && ws.daysRemaining >= 0 && ws.daysRemaining <= window)
       .sort((a, b) => a.ws.days - b.ws.days);
   }, [products, window]);
 
@@ -97,7 +97,7 @@ export default function ExpiringPage() {
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <Clock size={28} className="text-white/15 mb-4" strokeWidth={1} />
           <p className="text-white/30 text-sm">No products expiring within {window} days.</p>
-          <p className="text-white/20 text-xs mt-2">Your warranties are in good shape.</p>
+          <p className="text-white/20 text-xs mt-2">Only products with a known expiry date appear here.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-8">

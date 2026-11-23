@@ -5,7 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Grid3X3, List, Search, SlidersHorizontal, Plus,
-  Package, ChevronRight, Clock, AlertTriangle, TrendingUp, Shield,
+  Pencil, Trash2, Package, ChevronRight, Clock, AlertTriangle, TrendingUp, Shield,
 } from 'lucide-react';
 import { useStore } from '../../store/store.js';
 import { getWarrantyTimeline } from '../../lib/warrantyStatus.js';
@@ -18,14 +18,20 @@ const STATUS_STYLES = {
   unknown:  { label: 'Unknown',  color: 'rgba(255,255,255,0.15)' },
 };
 
+function ProductActions({ product }) {
+  return <div className="relative z-10 flex items-center gap-1 shrink-0">
+    <Link className="btn-ghost p-2" aria-label={'Edit invoice for ' + product.productName} title="Edit invoice" to={`/dashboard/upload?edit=${product.id}`}><Pencil size={14}/></Link>
+    <Link className="btn-ghost p-2" aria-label={'Delete ' + product.productName} title="Delete product" to={`/dashboard/products/${product.id}?confirm=delete`}><Trash2 size={14}/></Link>
+  </div>;
+}
+
 function ProductCard({ product }) {
   const ws = getWarrantyTimeline(product);
   const st = STATUS_STYLES[ws.status];
 
   return (
-    <Link
-      to={`/dashboard/products/${product.id}`}
-      className="data-card flex flex-col justify-between gap-4 group"
+    <div
+      className="relative data-card flex flex-col justify-between gap-4 group"
       style={{ minHeight: '160px', transition: 'background 200ms, border-color 200ms' }}
       onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; }}
@@ -44,7 +50,7 @@ function ProductCard({ product }) {
 
       <div className="flex-1">
         <p className="text-white/80 text-sm font-medium leading-tight mb-1 line-clamp-2">
-          {product.productName || 'Unnamed Product'}
+          <Link className="after:absolute after:inset-0" to={`/dashboard/products/${product.id}`}>{product.productName || 'Unnamed Product'}</Link>
         </p>
         <p className="text-white/30 text-xs">{product.brand || product.category || '—'}</p>
       </div>
@@ -56,13 +62,11 @@ function ProductCard({ product }) {
               {ws.status === 'expired' ? 'Expired' : 'Expires'} {ws.expiry.toLocaleDateString()}
             </p>
           )}
-          {product.riskScore != null && (
-            <p className="text-white/20 text-[11px] font-mono">Risk {product.riskScore}/100</p>
-          )}
+
         </div>
-        <ChevronRight size={13} className="text-white/15 group-hover:text-white/40 transition-colors" />
+        <ProductActions product={product} />
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -71,27 +75,24 @@ function ProductTableRow({ product }) {
   const st = STATUS_STYLES[ws.status];
 
   return (
-    <Link
-      to={`/dashboard/products/${product.id}`}
-      className="flex items-center gap-4 px-4 py-3 group rounded-[6px] transition-all duration-150"
+    <div
+      className="relative flex items-center gap-4 px-4 py-3 group rounded-[6px] transition-all duration-150"
       style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
       onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
     >
       <Package size={15} className="text-white/25 shrink-0" strokeWidth={1.5} />
       <div className="flex-1 min-w-0">
-        <p className="text-white/75 text-sm font-medium truncate">{product.productName || '—'}</p>
+        <p className="text-white/75 text-sm font-medium truncate"><Link className="after:absolute after:inset-0" to={`/dashboard/products/${product.id}`}>{product.productName || '—'}</Link></p>
         <p className="text-white/30 text-xs">{product.brand || '—'}</p>
       </div>
       <p className="text-white/30 text-xs hidden md:block w-32">{product.category || '—'}</p>
       <p className="text-xs shrink-0 w-24 text-right" style={{ color: st.color }}>
         {ws.status === 'expired' ? `Expired ${ws.days}d ago` : ws.days != null ? `${ws.days}d left` : '—'}
       </p>
-      {product.riskScore != null
-        ? <p className="text-white/30 text-xs font-mono w-16 text-right hidden lg:block">{product.riskScore}/100</p>
-        : <p className="w-16 hidden lg:block" />}
-      <ChevronRight size={13} className="text-white/15 group-hover:text-white/40 transition-colors shrink-0" />
-    </Link>
+
+      <ProductActions product={product} />
+    </div>
   );
 }
 
@@ -251,7 +252,7 @@ export default function ProductsPage() {
             <p className="flex-1 text-white/30 text-xs uppercase tracking-[0.1em]">Product</p>
             <p className="text-white/30 text-xs uppercase tracking-[0.1em] hidden md:block w-32">Category</p>
             <p className="text-white/30 text-xs uppercase tracking-[0.1em] w-24 text-right">Warranty</p>
-            <p className="text-white/30 text-xs uppercase tracking-[0.1em] w-16 text-right hidden lg:block">Risk</p>
+            <span className="w-16 sr-only">Actions</span>
             <div className="w-4" />
           </div>
           {filtered.map((p) => <ProductTableRow key={p.id} product={p} />)}

@@ -201,17 +201,8 @@ app.post('/api/ai/product-research', async (req, res) => {
     return;
   }
   try {
-    const target = [brand, productName].filter(Boolean).join(' ').trim();
-    const query = `"${target}" recall OR "service advisory" OR "safety notice" OR "known defect" OR "reliability issues"`;
-    const raw = await webSearch(query, { maxResults: 6, timeoutMs: 12000 });
-    const items = Array.isArray(raw) ? raw : Array.isArray(raw?.results) ? raw.results : [];
-    const evidence = items.slice(0, 6).map((r) => ({
-      title: r.title ?? 'Untitled',
-      url: r.url ?? '',
-      snippet: r.snippet ?? '',
-      category: classifyProductResearchItem(`${r.title ?? ''} ${r.snippet ?? ''}`),
-    }));
-    res.json({ ok: true, evidence, researchedAt: new Date().toISOString(), query });
+    const { researchProduct } = await import('../cloudflare-worker/src/productResearch.js');
+    res.json(await researchProduct(productName, async q => (await webSearch(q))?.results));
   } catch (err) {
     console.error('[product-research] failed:', err.message);
     res.status(502).json({ error: { code: 'RESEARCH_FAILED', message: err.message } });

@@ -1,3 +1,4 @@
+import { readAmazonInvoice } from './amazonInvoice.js';
 /**
  * Maps parsed invoice intelligence output to Add Product form fields.
  * Keeps category constrained to UI options and normalizes dates/prices.
@@ -24,6 +25,17 @@ export function normalizePurchaseDateForInput(value) {
   const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   return '';
+}
+
+/**
+ * Format a numeric INR price for display, e.g. "10749" -> "₹10,749".
+ * Never invents a value — returns '' when nothing meaningful is present.
+ */
+export function formatInrPrice(value) {
+  if (value == null || value === '') return '';
+  const n = Number(String(value).replace(/[^\d.]/g, ''));
+  if (!Number.isFinite(n) || n < 0) return '';
+  return '₹' + n.toLocaleString('en-IN');
 }
 
 /**
@@ -114,7 +126,7 @@ export function resolveCategoryForForm(parsedCategory, allowedCategories) {
     if (target.includes(keyword)) return canonicalExists(canonical) ? canonical : 'Other Electronics';
   }
 
-  return 'Other Electronics';
+  return '';
 }
 
 /**
@@ -130,6 +142,35 @@ export function resolveCategoryForForm(parsedCategory, allowedCategories) {
 export function supplementMissingProductFields(invoice, rawText, allowedCategories = []) {
   if (!invoice || typeof invoice !== 'object') return invoice;
   const out = { ...invoice };
+  const amazon = readAmazonInvoice(rawText);
+  if (amazon) {
+    // Amazon invoices carry authoritative platform fields (invoice/order
+    // number, seller, date, price). Merge them into the pipeline result
+    // instead of replacing it, so classifier-derived product identity
+    // (brand/category) survives when Amazon's own extraction is silent.
+    const merged = { ...out };
+    for (const [key, value] of Object.entries(amazon)) {
+      if (value != null && value !== '') merged[key] = value;
+    }
+    merged.serialNumber = amazon.serialNumber;
+    merged.warrantyMonths = amazon.warrantyMonths;
+    return merged;
+  }
+  const rows = String(rawText || '').split(/\r?\n/);
+  const header = rows.findIndex(row => /^\s*Product\s+Brand\s+Model\s+Qty\s+Unit Price\s+Total\s*$/i.test(row));
+  if (header >= 0) {
+    const cells = (rows[header + 1] || '').trim().split(/\s{2,}/);
+    if (cells.length === 6 && /^\d+$/.test(cells[3])) {
+      out.brand = cells[1];
+      out.model = cells[2];
+      out.productName = cells[2].toLowerCase().startsWith(cells[1].toLowerCase() + ' ') ? cells[2] : cells[1] + ' ' + cells[2];
+      const price = cells[4].match(/^(Rs\.?|INR|₹|USD|EUR)\s*([\d,]+(?:\.\d{1,2})?)$/i);
+      if (price) {
+        out.purchasePrice = Number(price[2].replace(/,/g, ''));
+        out.currency = /^(Rs\.?|INR|₹)$/i.test(price[1]) ? 'INR' : price[1].toUpperCase();
+      }
+    }
+  }
   const has = (v) => v != null && String(v).trim() !== '';
   const needName = !has(out.productName);
   const needBrand = !has(out.brand);
@@ -232,6 +273,9 @@ export function mapInvoiceToFormFields(invoice, opts = {}) {
   assign('warrantyMonths', source.warrantyMonths != null ? String(source.warrantyMonths) : '');
   assign('invoiceNumber', source.invoiceNumber != null ? String(source.invoiceNumber).trim() : '');
   assign('serialNumber', source.serialNumber != null ? String(source.serialNumber).trim() : '');
+  assign('model', source.model);
+  assign('currency', source.currency);
+  assign('orderNumber', source.orderNumber);
   assign('seller', source.seller != null ? String(source.seller).trim() : '');
   assign('price', normalizePurchasePriceForInput(source.purchasePrice ?? source.price));
 
@@ -239,3 +283,4 @@ export function mapInvoiceToFormFields(invoice, opts = {}) {
 }
 
 export default { normalizePurchaseDateForInput, normalizePurchasePriceForInput, resolveCategoryForForm, supplementMissingProductFields, mapInvoiceToFormFields };
+

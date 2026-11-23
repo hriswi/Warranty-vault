@@ -3,9 +3,8 @@
  */
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Bell, Moon, Sun, Shield, LogOut, Trash2, Check } from 'lucide-react';
+import { User, Shield, LogOut, Trash2, Check } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.jsx';
-import { useStore } from '../../store/store.js';
 import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { auth } from '../../lib/firebase.js';
 
@@ -43,7 +42,6 @@ function Toggle({ label, sub, checked, onChange }) {
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useStore();
   const navigate = useNavigate();
 
   const [displayName, setDisplayName] = useState(user?.displayName || '');
@@ -131,22 +129,11 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        {/* Appearance */}
-        <Section title="APPEARANCE">
-          <Toggle
-            label="Dark mode"
-            sub="Default dark. Toggle for light mode."
-            checked={theme === 'dark'}
-            onChange={toggleTheme}
-          />
-        </Section>
-
         {/* Notifications */}
         <Section title="NOTIFICATIONS">
           {[
             { key: 'expiryAlerts',  label: 'Warranty expiry alerts',  sub: 'Alerts when products expire within 30 days' },
-            { key: 'riskAlerts',    label: 'High risk alerts',         sub: 'Notify when risk score exceeds 65' },
-            { key: 'fraudAlerts',   label: 'Fraud detection alerts',   sub: 'Alert when an invoice is flagged' },
+            { key: 'riskAlerts',    label: 'High risk alerts',         sub: 'Notify when a product needs review' },
             { key: 'weeklyDigest',  label: 'Weekly digest',            sub: 'Summary of your warranty portfolio every Monday' },
           ].map(({ key, label, sub }) => (
             <Toggle

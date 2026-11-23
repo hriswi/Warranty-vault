@@ -5,13 +5,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { gsap } from 'gsap';
 import {
-  Shield, AlertTriangle, Clock, TrendingUp, Upload,
+  Shield, Clock, TrendingUp, Upload,
   ChevronRight, Package, Zap, ArrowUpRight,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useStore } from '../../store/store.js';
 import { getWarrantyTimeline } from '../../lib/warrantyStatus.js';
-import { riskColorFor, riskLevelFor } from '../../lib/engine/ai-engine/riskClassification.js';
+import { riskLevelFor } from '../../lib/engine/ai-engine/riskClassification.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -91,16 +91,6 @@ function ProductRow({ product }) {
         <p className="text-white/20 text-[11px]">{ws.expiry ? ws.expiry.toLocaleDateString() : '—'}</p>
       </div>
 
-      {/* Risk score */}
-      {product.riskScore != null && (
-        <div
-          className="text-xs font-mono w-8 text-right shrink-0"
-          style={{ color: riskColorFor(product.riskScore) }}
-        >
-          {product.riskScore}
-        </div>
-      )}
-
       <ChevronRight size={14} className="text-white/15 group-hover:text-white/40 transition-colors shrink-0" />
     </Link>
   );
@@ -125,7 +115,6 @@ export default function DashboardPage() {
   const expiringProducts= products.filter((p) => getWarrantyTimeline(p).status === 'expiring');
   const expiredProducts = products.filter((p) => getWarrantyTimeline(p).status === 'expired');
   const highRisk        = products.filter((p) => ['HIGH', 'CRITICAL'].includes(riskLevelFor(p.riskScore)));
-  const fraudAlerts     = products.filter((p) => p.fraudWarning && p.fraudWarning !== 'CLEAN');
 
   const recentProducts = [...products]
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
@@ -165,7 +154,7 @@ export default function DashboardPage() {
       ) : (
         <>
           {/* Stats grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
             <div className="stat-card">
               <StatCard icon={Shield} label="Active warranties" value={activeProducts.length} sub={`${products.length} total tracked`} />
             </div>
@@ -173,15 +162,13 @@ export default function DashboardPage() {
               <StatCard icon={Clock} label="Expiring in 30 days" value={expiringProducts.length} accent={expiringProducts.length > 0 ? 'Action needed' : undefined} />
             </div>
             <div className="stat-card">
-              <StatCard icon={TrendingUp} label="High risk products" value={highRisk.length} sub="Risk score ≥ 65" />
+              <StatCard icon={TrendingUp} label="High risk products" value={highRisk.length} sub="Products to review" />
             </div>
-            <div className="stat-card">
-              <StatCard icon={AlertTriangle} label="Fraud alerts" value={fraudAlerts.length} accent={fraudAlerts.length > 0 ? 'Review' : undefined} />
-            </div>
+
           </div>
 
           {/* Alerts strip */}
-          {(expiringProducts.length > 0 || fraudAlerts.length > 0) && (
+          {(expiringProducts.length > 0) && (
             <div className="section-card mb-8 flex flex-col gap-2">
               {expiringProducts.slice(0, 2).map((p) => {
                 const ws = getWarrantyTimeline(p);
@@ -202,21 +189,7 @@ export default function DashboardPage() {
                   </div>
                 );
               })}
-              {fraudAlerts.slice(0, 1).map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-4 px-4 py-3 rounded-[8px]"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
-                >
-                  <AlertTriangle size={14} className="text-white/40 shrink-0" />
-                  <p className="text-white/60 text-sm flex-1">
-                    Invoice for <span className="font-medium">{p.productName}</span> flagged — {p.fraudWarning}
-                  </p>
-                  <Link to="/dashboard/fraud" className="text-white/30 hover:text-white/70 transition-colors">
-                    <ArrowUpRight size={14} />
-                  </Link>
-                </div>
-              ))}
+
             </div>
           )}
 

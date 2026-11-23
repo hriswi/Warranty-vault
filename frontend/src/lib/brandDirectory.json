@@ -1,0 +1,602 @@
+[
+  {
+    "kind": "Device warranty lookup",
+    "name": "Apple",
+    "url": "https://support.apple.com/en-in/contact",
+    "checkUrl": "https://checkcoverage.apple.com/"
+  },
+  {
+    "kind": "Coverage instructions / services",
+    "name": "Samsung",
+    "url": "https://www.samsung.com/in/support/contact/",
+    "checkUrl": "https://www.samsung.com/in/support/mobile-devices/use-warranty-and-care-on-samsung-galaxy-devices/"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Xiaomi",
+    "url": "https://www.mi.com/in/support/",
+    "checkUrl": "https://www.mi.com/in/support/policy/warranty/"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "POCO",
+    "url": "https://www.po.co/global/support/contact/",
+    "checkUrl": "https://www.poco.in/warranty"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "realme",
+    "url": "https://www.realme.com/in/support",
+    "checkUrl": "https://www.realme.com/in/support/phonecheck"
+  },
+  {
+    "kind": "Authentication / activation",
+    "name": "OPPO",
+    "url": "https://www.oppo.com/in/contact/",
+    "checkUrl": "https://support.oppo.com/in/check/"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "vivo",
+    "url": "https://www.vivo.com/in/support",
+    "checkUrl": "https://www.vivo.com/in/index/warrantyTerms"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "iQOO",
+    "url": "https://www.iqoo.com/in/support",
+    "checkUrl": "https://www.iqoo.com/in/index/warrantyTerms"
+  },
+  {
+    "kind": "Authentication / activation",
+    "name": "OnePlus",
+    "url": "https://www.oneplus.in/support/product",
+    "checkUrl": "https://www.oneplus.in/support/protection-plan"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "Motorola",
+    "url": "https://en-in.support.motorola.com/app/mcp/contactus",
+    "checkUrl": "https://en-in.support.motorola.com/app/warranty/check"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Nothing",
+    "url": "https://in.nothing.tech/pages/contact-support",
+    "checkUrl": "https://in.nothing.tech/pages/warranty-policy"
+  },
+  {
+    "kind": "Coverage instructions / services",
+    "name": "Google",
+    "url": "https://support.google.com/pixelphone/",
+    "checkUrl": "https://support.google.com/store/answer/6160400?hl=en-IN"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "HMD",
+    "url": "https://www.hmd.com/en_in/support/",
+    "checkUrl": "https://www.hmd.com/en_in/support/topics/imei-checker"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Lava",
+    "url": "https://shop.lavamobiles.com/pages/support",
+    "checkUrl": "https://shop.lavamobiles.com/pages/support"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "Infinix",
+    "url": "https://infinixmobiles.in/pages/contact",
+    "checkUrl": "https://www.carlcare.in/in/warranty-check/"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "TECNO",
+    "url": "https://www.tecno-mobile.com/support/",
+    "checkUrl": "https://www.carlcare.in/in/warranty-check/"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "itel",
+    "url": "https://www.itel-life.com/in/products/brand/contact-us",
+    "checkUrl": "https://www.carlcare.in/in/warranty-check/"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "Lenovo",
+    "url": "https://support.lenovo.com/in/en/contact-us",
+    "checkUrl": "https://pcsupport.lenovo.com/in/en/warranty-lookup"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "Dell",
+    "url": "https://www.dell.com/support/home/en-in",
+    "checkUrl": "https://www.dell.com/support/contractservices/en-in"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "HP",
+    "url": "https://support.hp.com/in-en/contact",
+    "checkUrl": "https://support.hp.com/in-en/check-warranty"
+  },
+  {
+    "kind": "Coverage instructions / services",
+    "name": "Acer",
+    "url": "https://www.acer.com/in-en/support/contact-acer/service-contact?linkId=192613541",
+    "checkUrl": "https://www.acer.com/in-en/support/warranty/warranty-review"
+  },
+  {
+    "kind": "Coverage instructions / services",
+    "name": "ASUS",
+    "url": "https://www.asus.com/in/support/",
+    "checkUrl": "https://www.asus.com/in/support/faq/1041323/"
+  },
+  {
+    "kind": "Coverage instructions / services",
+    "name": "MSI",
+    "url": "https://in.msi.com/support/contact",
+    "checkUrl": "https://in.msi.com/support/technical_details/product-warranty-related"
+  },
+  {
+    "kind": "Coverage instructions / services",
+    "name": "Microsoft",
+    "url": "https://support.microsoft.com/en-IN/contactus",
+    "checkUrl": "https://support.microsoft.com/en-us/surface/update-your-surface-warranty-with-your-proof-of-purchase"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "Fujitsu",
+    "url": "https://support.ts.fujitsu.com/",
+    "checkUrl": "https://warranty.fujitsu-pc-asia.com/"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Gigabyte",
+    "url": "https://www.gigabyte.com/in/Contact",
+    "checkUrl": "https://www.gigabyte.com/in/Support/Consumer/Warranty"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Zotac",
+    "url": "https://www.zotac.com/in/support",
+    "checkUrl": "https://www.zotac.com/in/support"
+  },
+  {
+    "kind": "Coverage instructions / services",
+    "name": "Intel",
+    "url": "https://www.intel.com/content/www/us/en/support/contact-us.html",
+    "checkUrl": "https://www.intel.com/content/www/us/en/support/articles/000087990/services.html"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "AMD",
+    "url": "https://www.amd.com/en/forms/contact-us/support.html",
+    "checkUrl": "https://www.amd.com/en/resources/support-articles/warranty/PIB.html"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Corsair",
+    "url": "https://help.corsair.com/hc/en-us/articles/31304733718797-How-To-Contact-Us",
+    "checkUrl": "https://help.corsair.com/hc/en-us/articles/360033067832-Warranty-Corsair-Limited-Warranty"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Crucial",
+    "url": "https://www.crucial.com/support",
+    "checkUrl": "https://www.crucial.com/support/warranty"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Kingston",
+    "url": "https://www.kingston.com/en/support",
+    "checkUrl": "https://www.kingston.com/en/company/warranty"
+  },
+  {
+    "kind": "Coverage instructions / services",
+    "name": "Seagate",
+    "url": "https://www.seagate.com/in/en/contacts/",
+    "checkUrl": "https://www.seagate.com/in/en/support/warranty-and-replacements/"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "Western Digital",
+    "url": "https://www.westerndigital.com/en-in/support/contact-us",
+    "checkUrl": "https://support-en.wd.com/app/warrantystatusweb"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "SanDisk",
+    "url": "https://www.sandisk.com/en-in/support",
+    "checkUrl": "https://support-in.sandisk.com/app/warrantystatusweb"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "ADATA",
+    "url": "https://www.adata.com/in/support/contact-us/",
+    "checkUrl": "https://www.adata.com/in/support/warranty/"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "Transcend",
+    "url": "https://in.transcend-info.com/Support/contact",
+    "checkUrl": "https://in.transcend-info.com/support/verification"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Synology",
+    "url": "https://www.synology.com/en-in/company/contact_us",
+    "checkUrl": "https://kb.synology.com/en-in/DSM/tutorial/How_to_make_warranty_claim_for_Synology_NAS"
+  },
+  {
+    "kind": "Coverage instructions / services",
+    "name": "QNAP",
+    "url": "https://www.qnap.com/en-in/contact-us",
+    "checkUrl": "https://www.qnap.com/en-in/how-to/faq/article/how-do-i-check-the-warranty-status-of-my-qnap-device"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "TP-Link",
+    "url": "https://www.tp-link.com/in/about-us/contact/",
+    "checkUrl": "https://www.tp-link.com/in/support/replacement-warranty/"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "D-Link",
+    "url": "https://service.dlink.co.in/",
+    "checkUrl": "https://service.dlink.co.in/resources/D-Link-India-Warranty-and-Safety-Information.pdf"
+  },
+  {
+    "kind": "Coverage instructions / services",
+    "name": "Netgear",
+    "url": "https://www.netgear.com/support/",
+    "checkUrl": "https://kb.netgear.com/000065798/How-do-I-check-if-my-NETGEAR-product-is-under-warranty"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Tenda",
+    "url": "https://www.tendaindia.com/support",
+    "checkUrl": "https://www.tendaindia.com/support"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Ubiquiti",
+    "url": "https://help.ui.com/hc/en-us",
+    "checkUrl": "https://in.store.ui.com/in/en/faq?l=en&s=in"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Logitech",
+    "url": "https://support.logi.com/hc/en-in",
+    "checkUrl": "https://support.logi.com/hc/en-in/articles/360023183274-Warranty-replacement-process-for-India-Logitech-Authorized-Service-Centre"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Razer",
+    "url": "https://www.razer.com/ap-en/contact-us",
+    "checkUrl": "https://www.razer.com/ap-en/warranty"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "SteelSeries",
+    "url": "https://support.steelseries.com/hc/en-us",
+    "checkUrl": "https://support.steelseries.com/hc/en-us/articles/221391568-Warranty-Policy-How-do-I-claim-my-warranty-and-what-does-it-cover"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "BenQ",
+    "url": "https://www.benq.com/en-in/support/contact-us.html",
+    "checkUrl": "https://www.benq.com/en-in/support/registration-warranty/warranty-checker.html"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "ViewSonic",
+    "url": "https://www.viewsonic.com/in/support/",
+    "checkUrl": "https://www.viewsonic.com/in/support/warranty/check/"
+  },
+  {
+    "kind": "Device warranty lookup",
+    "name": "Epson",
+    "url": "https://www.epson.co.in/contact",
+    "checkUrl": "https://www.epson.co.in/w/warranty"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Canon",
+    "url": "https://in.canon/en/consumer/contact-us",
+    "checkUrl": "https://in.canon/en/consumer/web/warrantytermsandconditions"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Brother",
+    "url": "https://www.brother.in/en/support/contact",
+    "checkUrl": "https://www.brother.in/en/support"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Ricoh",
+    "url": "https://www.ricoh.com/support",
+    "checkUrl": "https://www.ricoh.com/products/printers-and-copiers/customer-support"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Sony",
+    "url": "https://www.sony.co.in/electronics/support",
+    "checkUrl": "https://www.sony.co.in/microsite/warranty-repair/"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "LG",
+    "url": "https://www.lg.com/in/support/contact-us/",
+    "checkUrl": "https://www.lg.com/in/support/warranty-terms/?tab=period"
+  },
+  {
+    "kind": "Registration / claim / service",
+    "name": "Panasonic",
+    "url": "https://www.panasonic.com/in/support/contact-us.html",
+    "checkUrl": "https://store.in.panasonic.com/extended-warranty/warranty-registration.html"
+  },
+  {
+    "kind": "Registration / claim / service",
+    "name": "TCL",
+    "url": "https://www.tcl.com/in/en/contact-us",
+    "checkUrl": "https://www.tcl.com/in/en/warranty-registration"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Hisense",
+    "url": "https://www.hisense-india.com/contact-us",
+    "checkUrl": "https://www.hisense-india.com/support/product-warranty-information"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Haier",
+    "url": "https://www.haier.com/in/service-support/",
+    "checkUrl": "https://www.haier.com/in/service-support/"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Whirlpool",
+    "url": "https://india.whirlpool.in/customer-care-service",
+    "checkUrl": "https://india.whirlpool.in/customer-care-service"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Bosch",
+    "url": "https://www.bosch-home.in/service/contact-us",
+    "checkUrl": "https://www.bosch-home.in/en/freewarranties"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Siemens",
+    "url": "https://www.siemens-home.bsh-group.in/customer-service/contact",
+    "checkUrl": "https://www.siemens-home.bsh-group.in/customer-service/warranty/warranty-terms-and-conditions/"
+  },
+  {
+    "kind": "Registration / claim / service",
+    "name": "IFB",
+    "url": "https://www.ifbappliances.com/support/product-help",
+    "checkUrl": "https://www.ifbappliances.com/digitalwarranty"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Godrej",
+    "url": "https://www.godrejenterprises.com/support",
+    "checkUrl": "https://www.godrejenterprises.com/support"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Voltas",
+    "url": "https://www.voltas.com/pages/contact-us",
+    "checkUrl": "https://www.voltas.com/pages/contact-us"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Blue Star",
+    "url": "https://consumer.bluestarindia.com/pages/service-support",
+    "checkUrl": "https://consumer.bluestarindia.com/pages/service-support"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Daikin",
+    "url": "https://daikinindia.com/contact-us/customer-support-information",
+    "checkUrl": "https://daikinindia.com/product-warranty-1"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Carrier",
+    "url": "https://carriermideaindia.com/customer-helpline/",
+    "checkUrl": "https://carriermideaindia.com/customer-helpline/"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Lloyd",
+    "url": "https://consumer.havells.com/consumer/SerialNumber/login.aspx",
+    "checkUrl": "https://www.havells.com/"
+  },
+  {
+    "kind": "Registration / claim / service",
+    "name": "Havells",
+    "url": "https://consumer.havells.com/consumer/SerialNumber/login.aspx",
+    "checkUrl": "https://consumer.havells.com/consumer/SerialNumber/"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Crompton",
+    "url": "https://www.crompton.co.in/pages/contact",
+    "checkUrl": "https://www.crompton.co.in/pages/customer-care"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Bajaj Electricals",
+    "url": "https://www.bajajelectricals.com/pages/consumer-care",
+    "checkUrl": "https://www.bajajelectricals.com/pages/consumer-care"
+  },
+  {
+    "kind": "Registration / claim / service",
+    "name": "Orient Electric",
+    "url": "https://orientelectric.com/pages/contact-us",
+    "checkUrl": "https://orientelectric.com/pages/warranty-registration"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "V-Guard",
+    "url": "https://vguard.com/pages/support",
+    "checkUrl": "https://www.vguard.in/waterpurifier/assets/pdf/WARRANTY-TERMS%26CONDITIONS.pdf"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Philips",
+    "url": "https://www.philips.co.in/c-s/support",
+    "checkUrl": "https://www.philips.co.in/c-s/support/warranty"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Dyson",
+    "url": "https://www.dyson.in/support/contact-us",
+    "checkUrl": "https://www.dyson.in/footer-primary-links/warranty-terms"
+  },
+  {
+    "kind": "Authentication / activation",
+    "name": "Kent",
+    "url": "https://www.kent.co.in/pages/kentservice?page=request-status",
+    "checkUrl": "https://www.kent.co.in/verify"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Eureka Forbes",
+    "url": "https://www.eurekaforbes.com/connect-with-us",
+    "checkUrl": "https://www.eurekaforbes.com/connect-with-us"
+  },
+  {
+    "kind": "Registration / claim / service",
+    "name": "Prestige",
+    "url": "https://www.ttkprestige.com/support/",
+    "checkUrl": "https://www.ttkprestige.com/warranty-form/"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Butterfly",
+    "url": "https://butterflyindia.com/customer-care/",
+    "checkUrl": "https://butterflyindia.com/service/"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Preethi",
+    "url": "https://www.shop.preethi.in/pages/contact-us",
+    "checkUrl": "https://www.shop.preethi.in/pages/terms-conditions-of-warranty"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Maharaja Whiteline",
+    "url": "https://www.maharajawhiteline.com/contactus",
+    "checkUrl": "https://www.maharajawhiteline.com/contactus"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Wonderchef",
+    "url": "https://www.wonderchef.com/pages/contact-us",
+    "checkUrl": "https://www.wonderchef.com/pages/contact-us"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Milton",
+    "url": "https://www.milton.in/pages/customer-care",
+    "checkUrl": "https://www.milton.in/pages/customer-care"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Pigeon",
+    "url": "https://stovekraft.com/contact-us/",
+    "checkUrl": "https://www.stovekraft.com/support/"
+  },
+  {
+    "kind": "Registration / claim / service",
+    "name": "JBL",
+    "url": "https://support.jbl.com/in/en/contact.html",
+    "checkUrl": "https://support.jbl.com/in/en/product-registration/?cid=contact"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Bose",
+    "url": "https://www.bose.com/support/asia",
+    "checkUrl": "https://www.bose.com/support/asia"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Sennheiser",
+    "url": "https://support.sennheiser-hearing.com/hc/en-in",
+    "checkUrl": "https://support.sennheiser-hearing.com/hc/en-in/articles/34888653392285-Detailed-Warranty-information"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Jabra",
+    "url": "https://www.jabra.com/en-in/contact",
+    "checkUrl": "https://www.jabra.com/en-in/supportpages/warranty-terms"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Marshall",
+    "url": "https://www.marshall.com/in/en/support",
+    "checkUrl": "https://www.marshall.com/in/en/support/warranty"
+  },
+  {
+    "kind": "Registration / claim / service",
+    "name": "boAt",
+    "url": "https://support.boat-lifestyle.com/",
+    "checkUrl": "https://www.boat-lifestyle.com/pages/warranty"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Noise",
+    "url": "https://help.gonoise.com/products/",
+    "checkUrl": "https://support.gonoise.com/"
+  },
+  {
+    "kind": "Registration / claim / service",
+    "name": "Boult",
+    "url": "https://goboult.co.in/pages/support",
+    "checkUrl": "https://goboult.co.in/pages/warranty-form"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Zebronics",
+    "url": "https://support.zebronics.com/contact",
+    "checkUrl": "https://shop.zebronics.com/pages/warranty-policy"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Portronics",
+    "url": "https://www.portronics.com/pages/support",
+    "checkUrl": "https://www.portronics.com/pages/warranty-policy"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Ambrane",
+    "url": "https://ambraneindia.com/pages/support-page",
+    "checkUrl": "https://ambraneindia.com/pages/warranty-support"
+  },
+  {
+    "kind": "Support / service",
+    "name": "Anker",
+    "url": "https://help.anker.com/support/contact-us",
+    "checkUrl": "https://www.ankerindia.com/"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Belkin",
+    "url": "https://www.belkin.com/in/support/",
+    "checkUrl": "https://s3.belkin.com/support/assets/legal/warranty/general/Belkin-General-Product-Warranty-August-2025.pdf"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "Garmin",
+    "url": "https://support.garmin.com/en-IN/?FAQ=lmXLT2CHNO6e2Bj26B5aQ7",
+    "checkUrl": "https://www.garmin.com/en-IN/legal/consumer-limited-warranty/"
+  },
+  {
+    "kind": "Warranty terms",
+    "name": "GoPro",
+    "url": "https://gopro.com/help/ContactUs",
+    "checkUrl": "https://static.gopro.com/content/dam/help/max/important-product---safety-instructions-and-warranty/MAX_Warranty_REVE.pdf"
+  }
+]

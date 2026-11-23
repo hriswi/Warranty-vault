@@ -193,7 +193,9 @@ function looksLikeSerialNumber(value) {
 function extractSerialNumber(lines) {
   const direct = extractByLabel(lines, FIELD_LABELS.serialNumber);
   if (direct) {
-    const candidate = direct.value.split(/\s{2,}/)[0].trim();
+    // Collapse all whitespace so IMEIs/serials printed with spaces
+    // (e.g. "3548 8966 6146 616") normalize to a single contiguous value.
+    const candidate = direct.value.split(/\s{2,}/)[0].trim().replace(/\s+/g, '');
     if (looksLikeSerialNumber(candidate)) {
       return { value: candidate, confidence: 0.9, source: `label match: "${direct.matchedLabel}"` };
     }
@@ -499,6 +501,8 @@ export function parseInvoice(rawOcrText) {
 
   const warrantyDurations = detectWarrantyDurations(cleanedText);
   const primaryWarranty = detectPrimaryWarrantyMonths(cleanedText);
+  const accessoryWarranty = warrantyDurations.find((w) => w && w.component === 'Accessories');
+  const accessoryWarrantyMonths = accessoryWarranty ? accessoryWarranty.months : null;
 
   // Run classification using whatever product name text we found
   // (falls back to full text if no product line was isolated, so
@@ -537,6 +541,7 @@ export function parseInvoice(rawOcrText) {
     serialNumber: serialNumber.value,
     purchaseDate: purchaseDate.value,
     warrantyMonths: primaryWarranty ? primaryWarranty.months : null,
+    accessoryWarrantyMonths,
     purchasePrice: purchasePrice.value,
     category: classification.category,
     expectedWarrantyMonths: classification.expectedWarrantyMonths,
@@ -549,6 +554,7 @@ export function parseInvoice(rawOcrText) {
       serialNumber: serialNumber.confidence,
       purchaseDate: purchaseDate.confidence,
       warrantyMonths: primaryWarranty ? primaryWarranty.confidence : 0,
+      accessoryWarrantyMonths: accessoryWarranty ? accessoryWarranty.confidence : 0,
       purchasePrice: purchasePrice.confidence,
       category: classification.categoryConfidence,
     },

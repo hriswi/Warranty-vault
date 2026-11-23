@@ -102,6 +102,7 @@ export const BRANDS = Object.freeze({
   oppo: { display: 'OPPO', categories: [CATEGORIES.SMARTPHONE] },
   google: { display: 'Google', categories: [CATEGORIES.SMARTPHONE, CATEGORIES.OTHER_ELECTRONICS] },
   nothing: { display: 'Nothing', categories: [CATEGORIES.SMARTPHONE, CATEGORIES.AUDIO_DEVICE] },
+  noise: { display: 'Noise', categories: [CATEGORIES.AUDIO_DEVICE, CATEGORIES.SMARTPHONE] },
   garmin: { display: 'Garmin', categories: [CATEGORIES.SMARTWATCH] },
   fitbit: { display: 'Fitbit', categories: [CATEGORIES.SMARTWATCH] },
   microsoft: { display: 'Microsoft', categories: [CATEGORIES.GAMING_CONSOLE, CATEGORIES.LAPTOP, CATEGORIES.KEYBOARD_MOUSE] },

@@ -14,8 +14,7 @@ import {
   onAuthStateChanged,
   updateProfile,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, googleProvider } from '../lib/firebase.js';
+import { auth, googleProvider } from '../lib/firebase.js';
 
 const AuthContext = createContext(null);
 
@@ -45,27 +44,8 @@ export function AuthProvider({ children }) {
   const rateLimit             = useRateLimit();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // Fetch or create user profile in Firestore
-        const ref = doc(db, 'users', firebaseUser.uid);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) {
-          await setDoc(ref, {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName || '',
-            photoURL: firebaseUser.photoURL || null,
-            createdAt: serverTimestamp(),
-            lastLogin: serverTimestamp(),
-          });
-        } else {
-          await setDoc(ref, { lastLogin: serverTimestamp() }, { merge: true });
-        }
-        setUser({ ...firebaseUser, profile: snap.data() });
-      } else {
-        setUser(null);
-      }
+    const unsub = onAuthStateChanged(auth, firebaseUser => {
+      setUser(firebaseUser);
       setLoading(false);
     });
     return unsub;

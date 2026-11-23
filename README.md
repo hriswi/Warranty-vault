@@ -4,7 +4,7 @@ A local-first, zero-cost warranty tracking platform. Every intelligence decision
 (OCR parsing, classification, fraud detection, risk scoring, claim eligibility)
 runs in the browser as deterministic JavaScript. A local Qwen model (llama.cpp)
 acts as the conversational assistant — it reasons over your warranty records
-but never invents data: deterministic engines and stored Firestore fields remain
+but never invents data: deterministic engines and stored product fields remain
 the source of truth.
 
 ## Structure
@@ -27,7 +27,7 @@ Vite Frontend (localhost:5173)
     ↓
 Browser-side Local AI Engine (Tesseract OCR + rule engines)
     ↓
-Firebase Authentication  →  Firestore Database
+Firebase Authentication  ->  Cloudflare Worker + per-account SQLite
 ```
 
 - Qwen (llama.cpp, `http://127.0.0.1:8080/v1`, OpenAI-compatible) is the
@@ -191,7 +191,7 @@ cd frontend && npm run build            # production build check
 - Qwen offline → the UI shows: "Local AI is currently offline. Start the Qwen
   server and try again." No silent fallback.
 - Deterministic warranty math (expiry status, days remaining) is computed
-  server-side from your synced Firestore products — Qwen never recalculates it.
+  server-side from your saved products — Qwen never recalculates it.
 - `GET /api/health` reports Qwen reachability (shown as a status pill in the
   Agent page).
 
@@ -199,24 +199,24 @@ cd frontend && npm run build            # production build check
 
 - **Vercel** — static frontend (`frontend/vercel.json`)
 - **Firebase Auth** — email/password + Google sign-in
-- **Firestore** — per-user product data (`frontend/firestore.rules`); the
-  composite index in `frontend/firestore.indexes.json` must be deployed once:
-  `firebase deploy --only firestore`
-- **Firebase Storage** — invoice file uploads (`frontend/storage.rules`)
+- **Cloudflare Workers Free** stores each account's products, repairs, and invoice files in its own SQLite-backed Durable Object. The Worker verifies the Firebase ID token before accessing the account's records.
 
-```bash
-cd frontend
-npm run build
-firebase deploy --only hosting,firestore,storage
+From the repository root in PowerShell:
+
+```powershell
+cd cloudflare-worker
+npm run deploy -- --keep-vars
+if ($LASTEXITCODE -eq 0) {
+    cd ../frontend
+    npx vercel --prod
+}
 ```
 
 ## Security notes
 
-- 3MB file upload limit enforced at dropzone validator, magic-byte check,
-  OCR pipeline guard, pre-upload guard, and Firebase Storage rules.
-- Firestore/Storage rules enforce strict per-user data isolation.
-- No invoice or product data is sent to third-party AI APIs — Qwen runs on
-  your machine and the bridge rejects non-whitelisted origins (403).
+- Purchase and repair invoices have a 500 KB limit. The browser checks file
+  signatures. The Worker validates the file again and routes requests by the signed-in user ID.
+- The selected AI backend receives extracted invoice text for field extraction and product context for chat.
 
 
 **Weighting intent** (calibrated, deterministic — never tuned to look nicer):

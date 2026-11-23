@@ -1,6 +1,6 @@
 /**
  * store.js — Global Zustand store.
- * Products, UI theme, notifications, and agent state.
+ * Products, notifications, and agent state.
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -8,14 +8,6 @@ import { persist } from 'zustand/middleware';
 export const useStore = create(
   persist(
     (set, get) => ({
-      // ── Theme ──────────────────────────────────────────────────────────
-      theme: 'dark', // 'dark' | 'light'
-      toggleTheme: () => {
-        const next = get().theme === 'dark' ? 'light' : 'dark';
-        document.documentElement.classList.toggle('light', next === 'light');
-        set({ theme: next });
-      },
-
       // ── Products ───────────────────────────────────────────────────────
       products: [],
       addProduct:    (product) => set((s) => ({ products: [product, ...s.products] })),
@@ -51,7 +43,7 @@ export const useStore = create(
     }),
     {
       name: 'warranty-vault-store',
-      partialize: (s) => ({ theme: s.theme, dashboardView: s.dashboardView }),
+      partialize: (s) => ({ dashboardView: s.dashboardView }),
     }
   )
 );

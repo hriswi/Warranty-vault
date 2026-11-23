@@ -55,6 +55,8 @@ export function pruneProduct(product) {
     serialNumber: product.serialNumber || null,
     seller: product.seller || null,
     price: product.price || null,
+    invoiceIssue: product.invoiceIssue || null,
+    riskLevel: product.riskLevel || null,
     riskScore: Number(product.riskScore) ?? null,
     fraudScore: Number(product.fraudScore) ?? null,
     fraudSignals: Array.isArray(product.fraudSignals) ? product.fraudSignals.slice(0, 6) : [],
@@ -85,9 +87,9 @@ export function buildContext(products, now = new Date()) {
   const summary = {
     total: pruned.length,
     expiringSoon: pruned.filter((p) => p.warrantyStatus === 'expiring').length,
-    highRisk: pruned.filter((p) => p.riskScore != null && p.riskScore >= 65).length,
+    highRisk: pruned.filter((p) => ['HIGH', 'CRITICAL'].includes(p.riskLevel) || p.riskScore >= 65).length,
     flaggedInvoices: pruned.filter(
-      (p) => p.fraudScore != null && (p.fraudScore >= 40 || (p.fraudSignals && p.fraudSignals.length > 0))
+      (p) => p.fraudScore >= 40 || p.fraudSignals.length > 0
     ).length,
   };
 

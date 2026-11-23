@@ -1,21 +1,16 @@
-/**
- * AgentPage.jsx
- * Conversational AI assistant backed by the local Qwen model.
- *
- *   React → POST /api/ai/chat → Node backend → Qwen (127.0.0.1:8080)
- *
- * The backend owns the Qwen protocol and the deterministic product
- * context. This page only renders a clean chat: streaming answers,
- * typing indicator, stop/retry, and small metadata ("Based on your
- * warranty records") — no internal reasoning or pipeline stages.
- */
+import { answerRiskQuestion } from '../../lib/riskRecords.js';
+import { brandContacts, productContact } from '../../lib/brandContacts.js';
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MessageSquare, Send, Brain, RotateCcw, Shield, TrendingUp, Clock, AlertTriangle, Zap, Square, RefreshCw, ExternalLink,
 } from 'lucide-react';
 import { useStore } from '../../store/store.js';
 import { useAuth } from '../../hooks/useAuth.jsx';
-import { streamChat, checkBackendHealth, ApiError } from '../../lib/api.js';
+import { streamChat, ApiError } from '../../lib/api.js';
+
+import { invoiceIssue } from '../../lib/invoiceIssue.js';
+import { riskLevelFor } from '../../lib/engine/ai-engine/riskClassification.js';
 
 const SUGGESTED_PROMPTS = [
   { icon: Shield,       text: 'Is my laptop warranty still active?' },
@@ -28,7 +23,6 @@ const SUGGESTED_PROMPTS = [
 ];
 
 const HISTORY_LIMIT = 10;
-const OFFLINE_MESSAGE = 'Local AI is currently offline. Start the Qwen server and try again.';
 
 /** Reduces store products to the compact fields the backend expects. */
 function pruneProducts(products) {
@@ -43,9 +37,10 @@ function pruneProducts(products) {
     serialNumber: p.serialNumber,
     seller: p.seller,
     price: p.price,
-    riskScore: p.riskScore,
-    fraudScore: p.fraudScore,
-    fraudSignals: Array.isArray(p.fraudSignals) ? p.fraudSignals.slice(0, 6) : [],
+    riskLevel: riskLevelFor(p.riskScore),
+    fraudWarning: p.fraudWarning,
+    invoiceIssue: invoiceIssue(p),
+    fraudSignals: (p.fraudSignals || []).map(({ type }) => ({ type, detail: invoiceIssue({ fraudSignals: [{ type }] }) })).slice(0, 6),
     repairHistory: Array.isArray(p.repairHistory) ? p.repairHistory.slice(0, 5) : [],
   }));
 }
@@ -147,6 +142,12 @@ function Message({ msg, onRetry, onSuggestion }) {
             {msg.streaming && <TypingDots />}
           </div>
 
+          {msg.contacts?.map(contact => (
+            <span key={contact.name} className="inline-flex flex-col gap-1 mt-2 mr-3 align-top">
+              <a href={contact.url} target="_blank" rel="noopener noreferrer" className="btn-ghost text-xs inline-flex items-center gap-2"><ExternalLink size={13}/> {contact.name} support</a>
+              {contact.checkUrl && <a href={contact.checkUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost text-xs inline-flex items-center gap-2"><Shield size={13}/> {contact.checkLabel || "Official warranty help"}</a>}
+            </span>
+          ))}
           <AssistantMeta msg={msg} />
 
           {msg.error && onRetry && (
@@ -162,11 +163,7 @@ function Message({ msg, onRetry, onSuggestion }) {
               >
                 <RefreshCw size={11} /> Try again
               </button>
-              {msg.code === 'QWEN_OFFLINE' && (
-                <span className="text-[10px] text-white/25 font-mono">
-                  Start C:\AI\start-qwen.bat
-                </span>
-              )}
+
             </div>
           )}
         </div>
@@ -201,30 +198,15 @@ export default function AgentPage() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [backendStatus, setBackendStatus] = useState('checking'); // checking | ready | ai-offline | backend-offline
-  const [aiProvider, setAiProvider] = useState('local-qwen');
 
   const scrollRef = useRef(null);
   const nearBottomRef = useRef(true);
   const abortRef = useRef(null);
   const inputRef = useRef(null);
 
-  const welcomeMessage = user
-    ? products.length > 0
-      ? `Yo — I can see ${products.length} product${products.length === 1 ? '' : 's'} with warranty, risk, and invoice-integrity details. I can also look up current specs, recalls, and device info when you ask.\n\nWhat are we checking?`
-      : "Yo — I can help with warranty coverage, risk, suspicious invoices, expiry dates, troubleshooting, and live device details.\n\nAdd a product first, then hit me with a question."
-    : "Sign in first, then we can check your warranty records and device details.";
+  const welcomeMessage = 'What would you like to check? I can help with a warranty, an invoice, or contacting the brand.';
 
-  // Health probe — the status pill tells the user Qwen/backend state honestly.
-  useEffect(() => {
-    let cancelled = false;
-    checkBackendHealth().then((h) => {
-      if (cancelled) return;
-      setBackendStatus(h.state || 'backend-offline');
-      setAiProvider(h.provider || 'local-qwen');
-    });
-    return () => { cancelled = true; };
-  }, []);
+
 
   useEffect(() => {
     setMessages([{ id: 'welcome', role: 'agent', content: welcomeMessage }]);
@@ -258,6 +240,35 @@ export default function AgentPage() {
       sources: [],
     };
 
+    const riskReply = answerRiskQuestion(query, products);
+    if (riskReply) {
+      setMessages(prev => [...prev, userMsg, { ...agentMsg, streaming:false, content:riskReply, dataSource:'records' }]);
+      setInput('');
+      return;
+    }
+    if (/^(?:what(?:'s| is) (?:my |the )?|show (?:my |the )?|my )?(serial number|invoice number|order number|purchase date)(?: please)?[?.!]*$/i.test(query) && products.length === 1) {
+      const record = products[0];
+      const fields = { 'serial number':'serialNumber', 'invoice number':'invoiceNumber', 'order number':'orderNumber', 'purchase date':'purchaseDate' };
+      const label = Object.keys(fields).find(k => query.toLowerCase().includes(k));
+      const value = record[fields[label]];
+      const content = value ? record.productName + ' — ' + label + ': ' + value + '.' : 'Your saved record has no ' + label + ' for ' + record.productName + '.';
+      setMessages(prev => [...prev, userMsg, { ...agentMsg, streaming:false, content, dataSource:'records' }]);
+      setInput('');
+      return;
+    }
+    const mentioned = brandContacts.filter(b => b.match.test(query));
+    if (/\b(support|customer care|helpline|service cent(?:er|re)|contact|warranty check|check coverage|imei)\b/i.test(query) || (messages.at(-1)?.chooseBrand && mentioned.length)) {
+      const matchedProducts = products.filter(p => p.model && query.toLowerCase().includes(p.model.toLowerCase()));
+      const saved = [...new Set((matchedProducts.length ? matchedProducts : products).map(productContact).filter(Boolean))];
+      const choices = mentioned.length ? mentioned : saved;
+      setMessages(prev => [...prev, userMsg, { ...agentMsg, streaming:false, chooseBrand:choices.length !== 1,
+        content: !choices.length ? 'Tell me the brand and I’ll open official support and warranty check pages.'
+          : choices.length === 1 ? 'Official support and warranty check are below.'
+          : 'Choose your brand for official support and warranty check.',
+        contacts:choices.map(({name,url,checkUrl,checkLabel}) => ({name,url,checkUrl,checkLabel})) }]);
+      setInput('');
+      return;
+    }
     setMessages((prev) => [...prev, userMsg, agentMsg]);
     setInput('');
     setLoading(true);
@@ -293,7 +304,7 @@ export default function AgentPage() {
             m.id === agentMsg.id ? { ...m, content: m.content + text } : m
           ));
         } else if (event.type === 'error') {
-          throw new ApiError(event.code || 'QWEN_ERROR', event.message || 'AI request failed.');
+          throw new ApiError(event.code || 'AI_STREAM_ERROR', event.message || 'AI request failed.');
         }
       }
 
@@ -304,13 +315,9 @@ export default function AgentPage() {
       ));
     } catch (err) {
       let content;
-      let code = err?.code;
+      let code = err?.name === 'AbortError' ? 'AbortError' : err?.code;
       if (err?.name === 'AbortError') {
         content = null; // stopped by user — keep whatever streamed so far
-      } else if (err instanceof ApiError && (err.state === 'AI_OFFLINE' || err.code === 'QWEN_OFFLINE')) {
-        content = OFFLINE_MESSAGE;
-      } else if (err instanceof ApiError && err.code === 'BACKEND_UNREACHABLE') {
-        content = 'Cannot reach the local AI bridge on http://localhost:3000 — start it with `cd backend && npm start`.';
       } else if (err instanceof ApiError) {
         content = err.message || 'The assistant could not answer. Try again.';
       } else {
@@ -352,10 +359,7 @@ export default function AgentPage() {
     abortRef.current?.abort();
     setMessages([{ id: 'welcome', role: 'agent', content: welcomeMessage }]);
     setInput('');
-    checkBackendHealth().then((h) => {
-      setBackendStatus(h.state || 'backend-offline');
-      setAiProvider(h.provider || 'local-qwen');
-    });
+
   };
 
   const handleSubmit = (e) => {
@@ -363,14 +367,6 @@ export default function AgentPage() {
     sendQuery(input);
   };
 
-  const isHostedAi = aiProvider === 'cloudflare-workers-ai';
-  const statusLabel = backendStatus === 'ready'
-    ? (isHostedAi ? 'Hosted AI ready' : 'Local AI ready')
-    : backendStatus === 'ai-offline'
-    ? (isHostedAi ? 'Hosted AI offline' : 'Local AI offline')
-    : backendStatus === 'backend-offline'
-    ? 'AI bridge offline'
-    : 'Checking…';
 
   return (
     <div className="flex flex-col h-full" style={{ maxHeight: 'calc(100vh - 56px)' }}>
@@ -394,23 +390,7 @@ export default function AgentPage() {
         </div>
 
         <div className="flex items-center gap-4">
-          <span
-            className="inline-flex items-center gap-2 text-[11px] font-mono px-3 py-1.5 rounded-full"
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: backendStatus === 'ready' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.35)',
-            }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{
-                background: backendStatus === 'ready' ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)',
-                boxShadow: backendStatus === 'ready' ? '0 0 0 3px rgba(255,255,255,0.08)' : 'none',
-              }}
-            />
-            {statusLabel}
-          </span>
+
           <button
             onClick={handleReset}
             className="flex items-center gap-2 text-white/25 text-xs hover:text-white/50 transition-colors"
@@ -503,21 +483,11 @@ export default function AgentPage() {
               </button>
             )}
           </form>
-          <p className="text-white/15 text-[11px] mt-2 text-center font-mono">
-            {backendStatus === 'ai-offline'
-              ? (isHostedAi
-                ? 'Hosted AI is temporarily unavailable — try again in a moment.'
-                : 'Qwen is not responding on 127.0.0.1:8080 — start it with C:\\AI\\start-qwen.bat to chat.')
-              : backendStatus === 'backend-offline'
-              ? (isHostedAi
-                ? 'Cannot reach the hosted AI service — check your connection and try again.'
-                : 'AI bridge unreachable — start it with `cd backend && npm start`.')
-              : (isHostedAi
-                ? 'Hosted AI · Sign-in required · Live web lookup for specs & recalls'
-                : 'Local AI via Qwen · All data stays on your device')}
-          </p>
+
         </div>
       </div>
     </div>
   );
 }
+
+

@@ -3,7 +3,7 @@
  *
  * CENTRAL FILE SECURITY LAYER
  * All upload points import from here. Single source of truth for the
- * 3MB hard limit, allowed MIME types, and file signature validation.
+ * 500 KB hard limit, allowed MIME types, and file signature validation.
  *
  * Enforced at:
  *   1. Drag-and-drop zone (instant rejection)
@@ -14,8 +14,8 @@
  */
 
 // ── Constants ────────────────────────────────────────────────────────────────
-export const MAX_FILE_SIZE_BYTES = 3 * 1024 * 1024; // 3 MB — hard limit
-export const MAX_FILE_SIZE_LABEL = '3MB';
+export const MAX_FILE_SIZE_BYTES = 500 * 1024; // 500 KB — hard limit
+export const MAX_FILE_SIZE_LABEL = '500 KB';
 
 /** Allowed MIME types. Nothing outside this set is accepted. */
 export const ALLOWED_MIME_TYPES = new Set([

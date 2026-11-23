@@ -13,8 +13,13 @@
 
 import { auth } from './firebase.js';
 
-const hostedDefault = 'https://warranty-vault-ai.warranty-vault-cloudflare-ai.workers.dev';
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || (location.hostname === 'localhost' ? 'http://localhost:3000' : hostedDefault)).replace(/\/+$/, '');
+export const hostedDefault = 'https://warranty-vault-ai.warranty-vault-cloudflare-ai.workers.dev';
+const localPage = ['localhost', '127.0.0.1'].includes(location.hostname);
+const configuredApi = import.meta.env.VITE_API_BASE_URL;
+const localBridge = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(configuredApi || '');
+const API_BASE = ((localPage || !localBridge ? configuredApi : '') || (localPage ? 'http://localhost:3000' : hostedDefault)).replace(/\/+$/, '');
+
+const CHAT_BASE = ((!localBridge && configuredApi) || hostedDefault).replace(/\/+$/, '');
 
 async function apiHeaders(extra = {}) {
   const token = await auth.currentUser?.getIdToken();
@@ -71,7 +76,7 @@ export async function checkBackendHealth(signal) {
 export async function* streamChat({ messages, products, signal }) {
   let res;
   try {
-    res = await fetch(`${API_BASE}/api/ai/chat`, {
+    res = await fetch(`${CHAT_BASE}/api/ai/chat`, {
       method: 'POST',
       headers: await apiHeaders({ 'Content-Type': 'application/json', Accept: 'text/event-stream' }),
       body: JSON.stringify({
@@ -84,7 +89,7 @@ export async function* streamChat({ messages, products, signal }) {
     if (err?.name === 'AbortError') throw err;
     throw new ApiError(
       'BACKEND_UNREACHABLE',
-      'Cannot reach the local AI bridge on http://localhost:3000 — start it with `cd backend && npm start`.'
+      'Could not reach Cloudflare. Check your connection and try again.'
     );
   }
 

@@ -129,6 +129,9 @@ const COMPONENT_KEYWORDS = [
   { kw: 'panel', component: 'Display Panel' },
   { kw: 'display', component: 'Display Panel' },
   { kw: 'battery', component: 'Battery' },
+  { kw: 'accessories', component: 'Accessories' },
+  { kw: 'in-box', component: 'Accessories' },
+  { kw: 'in box', component: 'Accessories' },
 ];
 
 const GENERIC_FULL_COVERAGE_PHRASES = [
@@ -283,7 +286,8 @@ export function detectPrimaryWarrantyMonths(text, minConfidence = 0.4) {
   const all = detectWarrantyDurations(text);
   const primaryCandidates = all.filter((r) => !r.component && r.confidence >= minConfidence);
   if (primaryCandidates.length === 0) return null;
-  return primaryCandidates[0];
+  return primaryCandidates.find((r) => /for\s+(?:the\s+)?(?:device|product|handset|phone)\b/i.test(r.contextSnippet))
+    || primaryCandidates[0];
 }
 
 export default { detectWarrantyDurations, detectPrimaryWarrantyMonths };

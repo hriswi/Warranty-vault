@@ -23,7 +23,8 @@
  */
 
 import { createWorker } from 'tesseract.js';
-import { renderPdfPageToCanvas, getPdfPageCount } from './pdfRenderer.js';
+import { renderPdfPageToCanvas, readPdfTextPages, getPdfPageCount } from './pdfRenderer.js';
+import { parseInvoice } from '../parsers/invoiceParser.js';
 
 /**
  * Default Tesseract recognition options tuned for invoices/receipts:
@@ -283,6 +284,15 @@ export class OcrError extends Error {
   }
 }
 
+function pdfLoadFailureMessage(err) {
+  const raw = String(err?.message || err || '');
+  if (/destroy is not a function/i.test(raw)) {
+    return 'Could not finish reading this PDF. Try uploading it again, or enter the details manually.';
+  }
+  if (raw) return `Failed to read the PDF: ${raw}`;
+  return 'Failed to read the PDF. The file may be corrupted or password-protected.';
+}
+
 /**
  * Detects whether a given uploaded file is a PDF based on MIME type
  * and/or filename extension (defensive: some browsers report PDFs
@@ -342,25 +352,31 @@ export async function extractInvoiceText(file, options = {}) {
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
 
   if (isPdfFile(file)) {
-    let numPages;
+    let numPages, pages;
     try {
       onProgress?.({ stage: 'Reading PDF…', progress: 0.02 });
-      numPages = await getPdfPageCount(file);
+      ({ count: numPages, pages } = await readPdfTextPages(file, options.maxPdfPages ?? Infinity));
     } catch (err) {
-      throw new OcrError('PDF_LOAD_FAILED', `Failed to read the PDF: ${err.message || err}`);
+      try {
+        numPages = await getPdfPageCount(file);
+        pages = [];
+      } catch {
+        throw new OcrError('PDF_LOAD_FAILED', pdfLoadFailureMessage(err));
+      }
     }
 
-    const maxPages = Math.max(1, Math.min(numPages, options.maxPdfPages ?? 3));
+    const maxPages = Math.max(1, Math.min(numPages, options.maxPdfPages ?? Infinity));
     const perPageWeight = 0.85 / maxPages;
     const baseProgress = 0.05;
 
-    let combinedText = '';
-    let totalConfidence = 0;
-    let pageResults = 0;
-    const allWords = [];
-    const allLines = [];
-    const allLowConf = [];
-
+    // Extract text per page (embedded text layer where usable, else OCR),
+    // then pick the single page that is the actual product invoice.
+    // Concatenating every page into one blob mixes fields across separate
+    // invoices (e.g. a packaging-fee invoice and the real product invoice in
+    // the same PDF), so each page is parsed independently and the strongest
+    // product-invoice page wins.
+    const pageTexts = [];
+    const pageOcrResults = [];
     for (let i = 1; i <= maxPages; i++) {
       const pageBaseP = baseProgress + ((i - 1) * perPageWeight);
       onProgress?.({
@@ -368,51 +384,91 @@ export async function extractInvoiceText(file, options = {}) {
         progress: Math.min(0.9, pageBaseP),
       });
 
-      const canvas = await rasterizePdfPage(file, i, { ...options, pageNumber: i });
+      const embedded = (pages[i - 1] || '').trim();
+      const embeddedUsable =
+        embedded.length >= 80 &&
+        /\d/.test(embedded) &&
+        /invoice|warranty|serial|purchase|amount|total/i.test(embedded) &&
+        !embedded.includes('\uFFFD');
 
-      const pageOcrOptions = {
-        ...options,
-        onProgress: ({ stage: s, progress: p }) => {
-          if (s) {
-            onProgress?.({
-              stage: maxPages > 1 ? `Page ${i}: ${s}` : s,
-              progress: Math.min(0.9, pageBaseP + (p * perPageWeight * 0.9)),
-            });
+      let pageText = '';
+      let ocrResult = null;
+      if (embeddedUsable) {
+        pageText = embedded;
+      } else {
+        const canvas = await rasterizePdfPage(file, i, { ...options, pageNumber: i });
+
+        const pageOcrOptions = {
+          ...options,
+          onProgress: ({ stage: s, progress: p }) => {
+            if (s) {
+              onProgress?.({
+                stage: maxPages > 1 ? `Page ${i}: ${s}` : s,
+                progress: Math.min(0.9, pageBaseP + (p * perPageWeight * 0.9)),
+              });
+            }
+          },
+        };
+
+        ocrResult = await extractTextFromImage(canvas, pageOcrOptions);
+        pageText = (ocrResult?.rawText || '').trim();
+
+        try {
+          if (canvas instanceof HTMLCanvasElement) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) try { ctx.clearRect(0, 0, canvas.width, canvas.height); } catch (_) { /* ignore */ }
+            canvas.width = 1; canvas.height = 1;
           }
-        },
-      };
-
-      const result = await extractTextFromImage(canvas, pageOcrOptions);
-
-      if (result?.rawText) {
-        combinedText += (combinedText ? '\n\n' : '') + result.rawText.trim();
-        allWords.push(...(result.words || []));
-        allLines.push(...(result.lines || []));
-        allLowConf.push(...(result.lowConfidenceWords || []));
-        if (typeof result.confidence === 'number') {
-          totalConfidence += result.confidence;
-          pageResults++;
-        }
+        } catch (_) { /* ignore cleanup */ }
       }
 
+      pageTexts[i - 1] = pageText;
+      pageOcrResults[i - 1] = ocrResult;
+    }
+
+    if (options.collectPages) return { pageTexts, pdfTotalPages: numPages };
+
+    // Select the page that looks like the real product invoice: a detected
+    // product name wins, then invoice number, then overall parse confidence.
+    let bestIndex = 0;
+    let bestScore = -1;
+    for (let i = 0; i < maxPages; i++) {
+      const text = pageTexts[i] || '';
+      if (!text) continue;
+      let score = 0;
       try {
-        if (canvas instanceof HTMLCanvasElement) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) try { ctx.clearRect(0, 0, canvas.width, canvas.height); } catch (_) { /* ignore */ }
-          canvas.width = 1; canvas.height = 1;
-        }
-      } catch (_) { /* ignore cleanup */ }
+        const parsed = parseInvoice(text);
+        if (parsed.productName) score += 3;
+        if (parsed.invoiceNumber) score += 1;
+        score += parsed.overallConfidence || 0;
+      } catch (_) { /* unparseable page — score stays 0 */ }
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = i;
+      }
+    }
+
+    const combinedText = pageTexts[bestIndex] || '';
+    const chosenOcr = pageOcrResults[bestIndex] || null;
+    let chosenConfidence = 0;
+    if (chosenOcr && typeof chosenOcr.confidence === 'number') {
+      chosenConfidence = chosenOcr.confidence;
+    } else {
+      try {
+        chosenConfidence = parseInvoice(combinedText).overallConfidence || 0;
+      } catch (_) { /* keep 0 */ }
     }
 
     onProgress?.({ stage: 'Finalizing extraction…', progress: 0.97 });
 
     return {
       rawText: combinedText,
-      confidence: pageResults > 0 ? Math.round((totalConfidence / pageResults) * 100) / 100 : 0,
-      words: allWords,
-      lowConfidenceWords: allLowConf,
-      lines: allLines,
-      engine: 'tesseract.js',
+      pageTexts,
+      confidence: chosenConfidence,
+      words: chosenOcr ? (chosenOcr.words || []) : [],
+      lowConfidenceWords: chosenOcr ? (chosenOcr.lowConfidenceWords || []) : [],
+      lines: chosenOcr ? (chosenOcr.lines || []) : [],
+      engine: chosenOcr ? 'tesseract.js' : 'pdf.js',
       pdfPagesProcessed: maxPages,
       pdfTotalPages: numPages,
     };

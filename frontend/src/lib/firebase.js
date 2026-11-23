@@ -7,15 +7,12 @@
  * In production, set these in Vercel/Firebase Hosting environment config.
  */
 import { initializeApp } from 'firebase/app';
-import { getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
 
 const requiredFirebaseEnv = [
   'VITE_FIREBASE_API_KEY',
   'VITE_FIREBASE_AUTH_DOMAIN',
   'VITE_FIREBASE_PROJECT_ID',
-  'VITE_FIREBASE_STORAGE_BUCKET',
   'VITE_FIREBASE_MESSAGING_SENDER_ID',
   'VITE_FIREBASE_APP_ID',
 ];
@@ -38,12 +35,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const analyticsReady = firebaseConfig.measurementId
-  ? isAnalyticsSupported().then((supported) => (supported ? getAnalytics(app) : null))
-  : Promise.resolve(null);
-
 export const auth = getAuth(app);
-export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
 googleProvider.setCustomParameters({ prompt: 'select_account' });
